@@ -132,6 +132,63 @@ public class AdminController : ControllerBase
         }
     }
 
+    [HttpPut("expenses/{id}")]
+    public async Task<IActionResult> UpdateExpense(int id, [FromBody] UpdateExpenseRequest request)
+    {
+        var expense = await _context.BusinessExpenses.FindAsync(id);
+        if (expense == null)
+        {
+            return NotFound(new { Message = "Expense not found." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            return BadRequest(new { Message = "Title is required." });
+        }
+
+        if (request.Amount <= 0)
+        {
+            return BadRequest(new { Message = "Amount should be greater than zero." });
+        }
+
+        var expenseDate = request.ExpenseDate?.Date ?? expense.ExpenseDate;
+        if (expenseDate.Kind != DateTimeKind.Utc)
+        {
+            expenseDate = DateTime.SpecifyKind(expenseDate, DateTimeKind.Utc);
+        }
+
+        expense.Title = request.Title.Trim();
+        expense.Category = string.IsNullOrWhiteSpace(request.Category) ? "Other" : request.Category.Trim();
+        expense.Amount = request.Amount;
+        expense.Notes = request.Notes?.Trim() ?? string.Empty;
+        expense.ExpenseDate = expenseDate;
+
+        try
+        {
+            await _context.SaveChangesAsync();
+            return Ok(expense);
+        }
+        catch (DbUpdateException)
+        {
+            return StatusCode(500, new { Message = "Could not update expense. Please try again." });
+        }
+    }
+
+    [HttpDelete("expenses/{id}")]
+    public async Task<IActionResult> DeleteExpense(int id)
+    {
+        var expense = await _context.BusinessExpenses.FindAsync(id);
+        if (expense == null)
+        {
+            return NotFound(new { Message = "Expense not found." });
+        }
+
+        _context.BusinessExpenses.Remove(expense);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { Message = "Expense deleted." });
+    }
+
     [HttpGet("users")]
     public async Task<IActionResult> GetUsers([FromQuery] string? search, [FromQuery] string? role)
     {
@@ -230,6 +287,15 @@ public class UpdateUserBlockStatusRequest
 }
 
 public class CreateExpenseRequest
+{
+    public string Title { get; set; } = string.Empty;
+    public string Category { get; set; } = "Other";
+    public decimal Amount { get; set; }
+    public string? Notes { get; set; }
+    public DateTime? ExpenseDate { get; set; }
+}
+
+public class UpdateExpenseRequest
 {
     public string Title { get; set; } = string.Empty;
     public string Category { get; set; } = "Other";
