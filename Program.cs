@@ -20,17 +20,40 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // PostgreSQL Database connection
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+var rawConnectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? builder.Configuration["DATABASE_URL"]
     ?? Environment.GetEnvironmentVariable("DATABASE_URL");
 
-if (string.IsNullOrEmpty(connectionString))
+if (string.IsNullOrEmpty(rawConnectionString))
 {
     throw new InvalidOperationException("No database connection string found. Set ConnectionStrings__DefaultConnection or DATABASE_URL environment variable.");
 }
 
+// Convert PostgreSQL URI format (postgresql://...) to Npgsql format if needed
+var connectionString = ConvertPostgresUriToNpgsql(rawConnectionString);
+
 builder.Services.AddDbContext<NoteDbContext>(options =>
     options.UseNpgsql(connectionString));
+
+static string ConvertPostgresUriToNpgsql(string connectionString)
+{
+    // If it's already a key-value format, return as-is
+    if (!connectionString.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+    {
+        return connectionString;
+    }
+
+    // Parse postgresql://username:password@host:port/database
+    var uri = new Uri(connectionString);
+    var userInfo = uri.UserInfo.Split(':');
+    var username = userInfo[0];
+    var password = userInfo.Length > 1 ? userInfo[1] : "";
+    var host = uri.Host;
+    var port = uri.Port > 0 ? uri.Port : 5432;
+    var database = uri.AbsolutePath.TrimStart('/');
+
+    return $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true";
+}
 
 // Register services
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -65,7 +88,8 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
             "http://localhost:5173",
             "https://localhost:5173",
-            "https://note-ocm6.vercel.app"
+            "https://note-ocm6.vercel.app",
+            "https://note-amber-omega.vercel.app"
         )
         .AllowAnyHeader()
         .AllowAnyMethod();
@@ -93,7 +117,7 @@ using (var scope = app.Services.CreateScope())
         ADD COLUMN IF NOT EXISTS "AddressLine1" text NOT NULL DEFAULT '';
     """);
     db.Database.ExecuteSqlRaw("""
-        ALTER TABLE "Orders"
+        ALTER TABLE "Orders"  
         ADD COLUMN IF NOT EXISTS "AddressLine2" text NOT NULL DEFAULT '';
     """);
     db.Database.ExecuteSqlRaw("""
