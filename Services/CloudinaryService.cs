@@ -12,19 +12,28 @@ public class CloudinaryService : ICloudinaryService
     public CloudinaryService(IOptions<CloudinaryOptions> options)
     {
         var cloudinaryOptions = options.Value;
-        if (string.IsNullOrWhiteSpace(cloudinaryOptions.CloudName) ||
-            string.IsNullOrWhiteSpace(cloudinaryOptions.ApiKey) ||
-            string.IsNullOrWhiteSpace(cloudinaryOptions.ApiSecret))
+
+        // Fallback to environment variables if Options binding is empty
+        var cloudName = cloudinaryOptions.CloudName
+            ?? Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME")
+            ?? Environment.GetEnvironmentVariable("Cloudinary__CloudName");
+
+        var apiKey = cloudinaryOptions.ApiKey
+            ?? Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY")
+            ?? Environment.GetEnvironmentVariable("Cloudinary__ApiKey");
+
+        var apiSecret = cloudinaryOptions.ApiSecret
+            ?? Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET")
+            ?? Environment.GetEnvironmentVariable("Cloudinary__ApiSecret");
+
+        if (string.IsNullOrWhiteSpace(cloudName) ||
+            string.IsNullOrWhiteSpace(apiKey) ||
+            string.IsNullOrWhiteSpace(apiSecret))
         {
             return;
         }
 
-        var account = new Account(
-            cloudinaryOptions.CloudName,
-            cloudinaryOptions.ApiKey,
-            cloudinaryOptions.ApiSecret
-        );
-
+        var account = new Account(cloudName, apiKey, apiSecret);
         _cloudinary = new Cloudinary(account);
     }
 
