@@ -1,0 +1,53 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\Owner\\source\\backend\\Note.Backend\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{BFD74C9E-A65A-65F1-20E7-D3A0A5101092}|Note.Backend.csproj|c:\\users\\owner\\source\\backend\\note.backend\\migrations\\20260427184435_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{BFD74C9E-A65A-65F1-20E7-D3A0A5101092}|Note.Backend.csproj|solutionrelative:migrations\\20260427184435_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{BFD74C9E-A65A-65F1-20E7-D3A0A5101092}|Note.Backend.csproj|c:\\users\\owner\\source\\backend\\note.backend\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{BFD74C9E-A65A-65F1-20E7-D3A0A5101092}|Note.Backend.csproj|solutionrelative:program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "20260427184435_InitialCreate.cs",
+              "DocumentMoniker": "C:\\Users\\Owner\\source\\backend\\Note.Backend\\Migrations\\20260427184435_InitialCreate.cs",
+              "RelativeDocumentMoniker": "Migrations\\20260427184435_InitialCreate.cs",
+              "ToolTip": "C:\\Users\\Owner\\source\\backend\\Note.Backend\\Migrations\\20260427184435_InitialCreate.cs",
+              "RelativeToolTip": "Migrations\\20260427184435_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-04-27T18:44:35.422Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\Owner\\source\\backend\\Note.Backend\\Program.cs",
+              "RelativeDocumentMoniker": "Program.cs",
+              "ToolTip": "C:\\Users\\Owner\\source\\backend\\Note.Backend\\Program.cs",
+              "RelativeToolTip": "Program.cs",
+              "ViewState": "AgIAAGAAAAAAAAAAAADwv24AAAAKAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-04-27T18:17:53.622Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
