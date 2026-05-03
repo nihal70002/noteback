@@ -89,7 +89,9 @@ builder.Services.AddCors(options =>
             "http://localhost:5173",
             "https://localhost:5173",
             "https://note-ocm6.vercel.app",
-            "https://note-amber-omega.vercel.app"
+            "https://note-amber-omega.vercel.app",
+            "https://papercues.in",
+            "https://www.papercues.in"
         )
         .AllowAnyHeader()
         .AllowAnyMethod();

@@ -18,6 +18,7 @@ public class NoteDbContext : DbContext
     public DbSet<ProductReview> ProductReviews { get; set; }
     public DbSet<Coupon> Coupons { get; set; }
     public DbSet<BusinessExpense> BusinessExpenses { get; set; }
+    public DbSet<StorefrontConfig> StorefrontConfigs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
