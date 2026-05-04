@@ -27,7 +27,7 @@ public class StorefrontController : ControllerBase
             // Return default config if none exists
             config = new StorefrontConfig
             {
-                HeroImageUrl = "/product3.png",
+                HeroImageUrl = "/hero.png",
                 HeroTitle = "The Art of Logging",
                 HeroSubtitle = "Capture<br />Every Moment",
                 HeroLink = "/shop",

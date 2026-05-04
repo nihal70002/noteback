@@ -34,14 +34,40 @@ public class OrdersController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        var (orderId, error) = await _orderService.CheckoutAsync(cartId, userId, details);
+        var (orderId, razorpayOrderId, amount, error) = await _orderService.CheckoutAsync(cartId, userId, details);
 
         if (orderId == null)
         {
             return BadRequest(new { Message = error ?? "Cart is empty or not found" });
         }
 
-        return Ok(new { Message = "Order placed successfully", OrderId = orderId });
+        return Ok(new { 
+            Message = "Order placed successfully", 
+            OrderId = orderId,
+            RazorpayOrderId = razorpayOrderId,
+            Amount = amount,
+            Currency = "INR"
+        });
+    }
+
+    [HttpPost("verify-payment")]
+    public async Task<IActionResult> VerifyPayment([FromBody] VerifyPaymentRequest request)
+    {
+        if (string.IsNullOrEmpty(request.RazorpayPaymentId) || 
+            string.IsNullOrEmpty(request.RazorpayOrderId) || 
+            string.IsNullOrEmpty(request.RazorpaySignature))
+        {
+            return BadRequest(new { Message = "Missing payment details" });
+        }
+
+        var success = await _orderService.VerifyPaymentAsync(request.OrderId, request.RazorpayPaymentId, request.RazorpaySignature);
+        
+        if (!success)
+        {
+            return BadRequest(new { Message = "Payment verification failed" });
+        }
+
+        return Ok(new { Message = "Payment verified successfully" });
     }
     [HttpGet("all")]
     [Authorize(Roles = "Admin")]
@@ -83,4 +109,12 @@ public class OrdersController : ControllerBase
 public class UpdateOrderStatusRequest
 {
     public string Status { get; set; } = string.Empty;
+}
+
+public class VerifyPaymentRequest
+{
+    public int OrderId { get; set; }
+    public string RazorpayPaymentId { get; set; } = string.Empty;
+    public string RazorpayOrderId { get; set; } = string.Empty;
+    public string RazorpaySignature { get; set; } = string.Empty;
 }

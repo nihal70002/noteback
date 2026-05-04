@@ -1,3 +1,7 @@
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Note.Backend.Data;
 using Note.Backend.Models;
@@ -7,13 +11,16 @@ namespace Note.Backend.Services;
 public class OrderService : IOrderService
 {
     private readonly NoteDbContext _context;
+    private readonly IConfiguration _configuration;
+    private static readonly HttpClient _httpClient = new HttpClient();
 
-    public OrderService(NoteDbContext context)
+    public OrderService(NoteDbContext context, IConfiguration configuration)
     {
         _context = context;
+        _configuration = configuration;
     }
 
-    public async Task<(string? OrderId, string? Error)> CheckoutAsync(string cartId, string userId, ShippingDetails shippingDetails)
+    public async Task<(string? OrderId, string? RazorpayOrderId, decimal Amount, string? Error)> CheckoutAsync(string cartId, string userId, ShippingDetails shippingDetails)
     {
         if (string.IsNullOrWhiteSpace(shippingDetails.FullName) ||
             string.IsNullOrWhiteSpace(shippingDetails.PhoneNumber) ||
@@ -22,13 +29,13 @@ public class OrderService : IOrderService
             string.IsNullOrWhiteSpace(shippingDetails.State) ||
             string.IsNullOrWhiteSpace(shippingDetails.Pincode))
         {
-            return (null, "Please fill all required shipping fields.");
+            return (null, null, 0, "Please fill all required shipping fields.");
         }
 
         var primaryPhone = shippingDetails.PhoneNumber.Trim();
         if (primaryPhone.Length < 10 || primaryPhone.Length > 15)
         {
-            return (null, "Primary phone number is invalid.");
+            return (null, null, 0, "Primary phone number is invalid.");
         }
 
         var fullAddress = string.Join(", ", new[]
@@ -47,19 +54,19 @@ public class OrderService : IOrderService
 
         if (cart == null || !cart.Items.Any())
         {
-            return (null, "Cart is empty or not found.");
+            return (null, null, 0, "Cart is empty or not found.");
         }
 
         foreach (var item in cart.Items)
         {
             if (item.Product == null)
             {
-                return (null, "A product in your cart is no longer available.");
+                return (null, null, 0, "A product in your cart is no longer available.");
             }
 
             if (item.Quantity > item.Product.Stock)
             {
-                return (null, $"Only {item.Product.Stock} item(s) available for {item.Product.Name}.");
+                return (null, null, 0, $"Only {item.Product.Stock} item(s) available for {item.Product.Name}.");
             }
         }
 
@@ -72,7 +79,7 @@ public class OrderService : IOrderService
             var coupon = await _context.Coupons.FirstOrDefaultAsync(c => c.Code == couponCode && c.IsActive);
             if (coupon == null)
             {
-                return (null, "Coupon code is invalid.");
+                return (null, null, 0, "Coupon code is invalid.");
             }
 
             discountAmount = Math.Round(subtotal * (coupon.DiscountPercent / 100m), 2);
@@ -110,6 +117,46 @@ public class OrderService : IOrderService
             }).ToList()
         };
 
+        // Razorpay API Call
+        var keyId = _configuration["RAZORPAY_KEY_ID"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_ID");
+        var keySecret = _configuration["RAZORPAY_KEY_SECRET"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_SECRET");
+
+        if (string.IsNullOrEmpty(keyId) || string.IsNullOrEmpty(keySecret))
+        {
+            return (null, null, 0, "Payment gateway configuration is missing.");
+        }
+
+        var amountInPaise = (int)Math.Round(totalAmount * 100);
+        if (amountInPaise < 100)
+        {
+            return (null, null, 0, "Amount must be at least ₹1.00");
+        }
+
+        var authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{keyId}:{keySecret}"));
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.razorpay.com/v1/orders")
+        {
+            Headers = { Authorization = new AuthenticationHeaderValue("Basic", authHeader) },
+            Content = new StringContent(JsonSerializer.Serialize(new
+            {
+                amount = amountInPaise,
+                currency = "INR",
+                receipt = Guid.NewGuid().ToString().Substring(0, 40)
+            }), Encoding.UTF8, "application/json")
+        };
+
+        var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync();
+            return (null, null, 0, $"Failed to create payment order: {err}");
+        }
+
+        var responseBody = await response.Content.ReadAsStringAsync();
+        var razorpayData = JsonSerializer.Deserialize<JsonElement>(responseBody);
+        var razorpayOrderId = razorpayData.GetProperty("id").GetString();
+        
+        order.RazorpayOrderId = razorpayOrderId;
+
         _context.Orders.Add(order);
 
         foreach (var item in cart.Items)
@@ -125,7 +172,7 @@ public class OrderService : IOrderService
         
         await _context.SaveChangesAsync();
 
-        return (order.Id.ToString(), null);
+        return (order.Id.ToString(), razorpayOrderId, totalAmount, null);
     }
 
     public async Task<IEnumerable<Order>> GetUserOrdersAsync(string userId)
@@ -177,5 +224,35 @@ public class OrderService : IOrderService
 
         await _context.SaveChangesAsync();
         return true;
+    }
+
+    public async Task<bool> VerifyPaymentAsync(int orderId, string paymentId, string signature)
+    {
+        var order = await _context.Orders.FindAsync(orderId);
+        if (order == null || string.IsNullOrEmpty(order.RazorpayOrderId))
+            return false;
+
+        var keySecret = _configuration["RAZORPAY_KEY_SECRET"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_SECRET");
+        if (string.IsNullOrEmpty(keySecret))
+            return false;
+
+        var payload = $"{order.RazorpayOrderId}|{paymentId}";
+        var secretBytes = Encoding.UTF8.GetBytes(keySecret);
+        var payloadBytes = Encoding.UTF8.GetBytes(payload);
+
+        using (var hmac = new HMACSHA256(secretBytes))
+        {
+            byte[] hash = hmac.ComputeHash(payloadBytes);
+            string expectedSignature = BitConverter.ToString(hash).Replace("-", "").ToLower();
+
+            if (expectedSignature == signature)
+            {
+                order.Status = "Processing";
+                order.RazorpayPaymentId = paymentId;
+                await _context.SaveChangesAsync();
+                return true;
+            }
+        }
+        return false;
     }
 }

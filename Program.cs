@@ -9,6 +9,9 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load .env file variables
+DotNetEnv.Env.Load();
+
 // Add services to the container
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
@@ -129,6 +132,14 @@ using (var scope = app.Services.CreateScope())
     db.Database.ExecuteSqlRaw("""
         ALTER TABLE "Orders"
         ADD COLUMN IF NOT EXISTS "State" text NOT NULL DEFAULT '';
+    """);
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Orders"
+        ADD COLUMN IF NOT EXISTS "RazorpayOrderId" text;
+    """);
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Orders"
+        ADD COLUMN IF NOT EXISTS "RazorpayPaymentId" text;
     """);
 }
 

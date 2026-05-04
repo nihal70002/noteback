@@ -26,6 +26,10 @@ public class Order
     public string Pincode { get; set; } = string.Empty;
     
     public List<OrderItem> Items { get; set; } = new();
+    
+    // Razorpay Integration
+    public string? RazorpayOrderId { get; set; }
+    public string? RazorpayPaymentId { get; set; }
 }
 
 public class OrderItem
