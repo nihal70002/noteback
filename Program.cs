@@ -88,16 +88,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-            "http://localhost:5173",
-            "https://note-ocm6.vercel.app",
-            "https://note-amber-omega.vercel.app",
-            "https://papercues.in",
-            "https://www.papercues.in"
-        )
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials(); // 🔥 REQUIRED
+        policy
+            .AllowAnyOrigin() // Temporary debug mode to fix CORS
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
 });
 
@@ -143,21 +137,8 @@ using (var scope = app.Services.CreateScope())
     """);
 }
 
+app.UseRouting();
 app.UseCors("AllowFrontend");
-
-app.Use(async (context, next) =>
-{
-    if (context.Request.Method == "OPTIONS")
-    {
-        context.Response.Headers["Access-Control-Allow-Origin"] = context.Request.Headers["Origin"];
-        context.Response.Headers["Access-Control-Allow-Headers"] = "*";
-        context.Response.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS";
-        context.Response.StatusCode = 200;
-        return;
-    }
-
-    await next();
-});
 
 // app.UseHttpsRedirection();
 
