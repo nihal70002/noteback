@@ -142,7 +142,7 @@ public class OrderService : IOrderService
                 {
                     amount = amountInPaise,
                     currency = "INR",
-                    receipt = Guid.NewGuid().ToString().Substring(0, 40)
+                    receipt = Guid.NewGuid().ToString()
                 }), Encoding.UTF8, "application/json")
             };
 
