@@ -118,8 +118,8 @@ public class OrderService : IOrderService
         };
 
         // Razorpay API Call
-        var keyId = _configuration["RAZORPAY_KEY_ID"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_ID");
-        var keySecret = _configuration["RAZORPAY_KEY_SECRET"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_SECRET");
+        var keyId = (_configuration["RAZORPAY_KEY_ID"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_ID"))?.Trim();
+        var keySecret = (_configuration["RAZORPAY_KEY_SECRET"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_SECRET"))?.Trim();
 
         if (string.IsNullOrEmpty(keyId) || string.IsNullOrEmpty(keySecret))
         {
@@ -132,47 +132,58 @@ public class OrderService : IOrderService
             return (null, null, 0, "Amount must be at least ₹1.00");
         }
 
-        var authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{keyId}:{keySecret}"));
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.razorpay.com/v1/orders")
+        try
         {
-            Headers = { Authorization = new AuthenticationHeaderValue("Basic", authHeader) },
-            Content = new StringContent(JsonSerializer.Serialize(new
+            var authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{keyId}:{keySecret}"));
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.razorpay.com/v1/orders")
             {
-                amount = amountInPaise,
-                currency = "INR",
-                receipt = Guid.NewGuid().ToString().Substring(0, 40)
-            }), Encoding.UTF8, "application/json")
-        };
+                Headers = { Authorization = new AuthenticationHeaderValue("Basic", authHeader) },
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    amount = amountInPaise,
+                    currency = "INR",
+                    receipt = Guid.NewGuid().ToString().Substring(0, 40)
+                }), Encoding.UTF8, "application/json")
+            };
 
-        var response = await _httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode)
-        {
-            var err = await response.Content.ReadAsStringAsync();
-            return (null, null, 0, $"Failed to create payment order: {err}");
-        }
-
-        var responseBody = await response.Content.ReadAsStringAsync();
-        var razorpayData = JsonSerializer.Deserialize<JsonElement>(responseBody);
-        var razorpayOrderId = razorpayData.GetProperty("id").GetString();
-        
-        order.RazorpayOrderId = razorpayOrderId;
-
-        _context.Orders.Add(order);
-
-        foreach (var item in cart.Items)
-        {
-            if (item.Product != null)
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
             {
-                item.Product.Stock -= item.Quantity;
+                var err = await response.Content.ReadAsStringAsync();
+                return (null, null, 0, $"Failed to create payment order: {err}");
             }
-        }
-        
-        // Clear the cart
-        _context.Carts.Remove(cart);
-        
-        await _context.SaveChangesAsync();
 
-        return (order.Id.ToString(), razorpayOrderId, totalAmount, null);
+            var responseBody = await response.Content.ReadAsStringAsync();
+            var razorpayData = JsonSerializer.Deserialize<JsonElement>(responseBody);
+            var razorpayOrderId = razorpayData.GetProperty("id").GetString();
+            
+            order.RazorpayOrderId = razorpayOrderId;
+
+            _context.Orders.Add(order);
+
+            foreach (var item in cart.Items)
+            {
+                if (item.Product != null)
+                {
+                    item.Product.Stock -= item.Quantity;
+                }
+            }
+            
+            // Clear the cart
+            _context.Carts.Remove(cart);
+            
+            await _context.SaveChangesAsync();
+
+            return (order.Id.ToString(), razorpayOrderId, totalAmount, null);
+        }
+        catch (DbUpdateException dbEx)
+        {
+            return (null, null, 0, $"Database Error: {dbEx.InnerException?.Message ?? dbEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            return (null, null, 0, $"Server Error: {ex.Message}");
+        }
     }
 
     public async Task<IEnumerable<Order>> GetUserOrdersAsync(string userId)
