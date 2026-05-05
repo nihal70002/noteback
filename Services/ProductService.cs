@@ -15,7 +15,7 @@ public class ProductService : IProductService
 
     public async Task<IEnumerable<Product>> GetAllProductsAsync(string? search = null, string? category = null, string? sort = null)
     {
-        var query = _context.Products.AsQueryable();
+        var query = _context.Products.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
         {
