@@ -8,4 +8,6 @@ public class User
     public string PasswordHash { get; set; } = string.Empty;
     public string Role { get; set; } = "User"; // "User" or "Admin"
     public bool IsBlocked { get; set; }
+    public string? PasswordResetTokenHash { get; set; }
+    public DateTime? PasswordResetTokenExpiresAt { get; set; }
 }
