@@ -121,7 +121,8 @@ public class OrderService : IOrderService
             {
                 ProductId = i.ProductId,
                 Quantity = i.Quantity,
-                Price = i.Product?.Price ?? 0
+                Price = i.Product?.Price ?? 0,
+                SelectedChoicesJson = i.SelectedChoicesJson
             }).ToList()
         };
 

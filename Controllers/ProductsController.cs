@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using Note.Backend.Data;
 using Note.Backend.Services;
 using Note.Backend.Models;
 
@@ -10,10 +12,12 @@ namespace Note.Backend.Controllers;
 public class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
+    private readonly NoteDbContext _context;
 
-    public ProductsController(IProductService productService)
+    public ProductsController(IProductService productService, NoteDbContext context)
     {
         _productService = productService;
+        _context = context;
     }
 
     [HttpGet]
@@ -55,5 +59,35 @@ public class ProductsController : ControllerBase
         var success = await _productService.DeleteProductAsync(id);
         if (!success) return NotFound();
         return NoContent();
+    }
+
+    [HttpGet("{id}/pack-choices")]
+    public async Task<IActionResult> GetPackChoices(string id)
+    {
+        var product = await _productService.GetProductByIdAsync(id);
+        if (product == null) return NotFound();
+        if (!product.IsPack) return BadRequest(new { Message = "This product is not a pack." });
+
+        var choices = await _productService.GetPackChoicesAsync(id);
+        return Ok(choices);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost("{id}/pack-choices")]
+    public async Task<IActionResult> SetPackChoices(string id, [FromBody] List<string> choiceProductIds)
+    {
+        var product = await _productService.GetProductByIdAsync(id);
+        if (product == null) return NotFound();
+
+        var existing = await _context.PackChoices.Where(pc => pc.PackProductId == id).ToListAsync();
+        _context.PackChoices.RemoveRange(existing);
+
+        foreach (var choiceId in choiceProductIds)
+        {
+            _context.PackChoices.Add(new PackChoice { PackProductId = id, ChoiceProductId = choiceId });
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new { Message = "Pack choices updated." });
     }
 }

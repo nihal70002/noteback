@@ -16,6 +16,7 @@ public class NoteDbContext : DbContext
     public DbSet<OrderItem> OrderItems { get; set; }
     public DbSet<WishlistItem> WishlistItems { get; set; }
     public DbSet<ProductReview> ProductReviews { get; set; }
+    public DbSet<PackChoice> PackChoices { get; set; }
     public DbSet<Coupon> Coupons { get; set; }
     public DbSet<BusinessExpense> BusinessExpenses { get; set; }
     public DbSet<StorefrontConfig> StorefrontConfigs { get; set; }
@@ -45,6 +46,18 @@ public class NoteDbContext : DbContext
         modelBuilder.Entity<ProductReview>()
             .HasIndex(r => new { r.UserId, r.ProductId })
             .IsUnique();
+
+        modelBuilder.Entity<PackChoice>()
+            .HasOne(pc => pc.PackProduct)
+            .WithMany()
+            .HasForeignKey(pc => pc.PackProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PackChoice>()
+            .HasOne(pc => pc.ChoiceProduct)
+            .WithMany()
+            .HasForeignKey(pc => pc.ChoiceProductId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         // Seed initial products
         modelBuilder.Entity<Product>().HasData(

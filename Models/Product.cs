@@ -17,4 +17,6 @@ public class Product
     public int Stock { get; set; } = 25;
     public decimal AverageRating { get; set; }
     public int ReviewCount { get; set; }
+    public bool IsPack { get; set; }
+    public int? PackSize { get; set; }
 }

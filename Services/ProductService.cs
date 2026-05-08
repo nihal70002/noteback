@@ -91,4 +91,15 @@ public class ProductService : IProductService
     {
         return await _context.Products.AnyAsync(e => e.Id == id);
     }
+
+    public async Task<IEnumerable<Product>> GetPackChoicesAsync(string packProductId)
+    {
+        return await _context.PackChoices
+            .Where(pc => pc.PackProductId == packProductId)
+            .Include(pc => pc.ChoiceProduct)
+            .Select(pc => pc.ChoiceProduct)
+            .Where(p => p != null)
+            .Cast<Product>()
+            .ToListAsync();
+    }
 }

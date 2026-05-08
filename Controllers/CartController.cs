@@ -25,7 +25,7 @@ public class CartController : ControllerBase
     [HttpPost("{cartId}/items")]
     public async Task<ActionResult<Cart>> AddItemToCart(string cartId, [FromBody] AddCartItemRequest request)
     {
-        var (cart, error) = await _cartService.AddItemToCartAsync(cartId, request.ProductId, request.Quantity);
+        var (cart, error) = await _cartService.AddItemToCartAsync(cartId, request.ProductId, request.Quantity, request.SelectedChoices);
         if (cart == null) return BadRequest(new { Message = error });
         return Ok(cart);
     }
@@ -50,6 +50,7 @@ public class AddCartItemRequest
 {
     public string ProductId { get; set; } = string.Empty;
     public int Quantity { get; set; }
+    public List<string>? SelectedChoices { get; set; }
 }
 
 public class UpdateCartItemRequest

@@ -9,4 +9,5 @@ public interface IProductService
     Task<Product> CreateProductAsync(Product product);
     Task<bool> UpdateProductAsync(string id, Product product);
     Task<bool> DeleteProductAsync(string id);
+    Task<IEnumerable<Product>> GetPackChoicesAsync(string packProductId);
 }

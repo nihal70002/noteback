@@ -30,13 +30,41 @@ public class CartService : ICartService
         return cart;
     }
 
-    public async Task<(Cart? Cart, string? Error)> AddItemToCartAsync(string cartId, string productId, int quantity)
+    public async Task<(Cart? Cart, string? Error)> AddItemToCartAsync(string cartId, string productId, int quantity, List<string>? selectedChoices = null)
     {
         if (quantity < 1) quantity = 1;
 
         var product = await _context.Products.FindAsync(productId);
         if (product == null) return (null, "Product not found.");
         if (product.Stock <= 0) return (null, "This product is out of stock.");
+
+        if (product.IsPack && product.PackSize.HasValue)
+        {
+            var required = product.PackSize.Value;
+            if (selectedChoices == null || selectedChoices.Count != required)
+            {
+                return (null, $"Please select exactly {required} item(s) for this pack.");
+            }
+
+            var validChoiceIds = await _context.PackChoices
+                .Where(pc => pc.PackProductId == productId)
+                .Select(pc => pc.ChoiceProductId)
+                .ToListAsync();
+
+            foreach (var choiceId in selectedChoices)
+            {
+                if (!validChoiceIds.Contains(choiceId))
+                {
+                    return (null, "One or more selected pack items are invalid.");
+                }
+
+                var choiceProduct = await _context.Products.FindAsync(choiceId);
+                if (choiceProduct == null || choiceProduct.Stock <= 0)
+                {
+                    return (null, $"Selected item '{choiceProduct?.Name ?? choiceId}' is out of stock.");
+                }
+            }
+        }
 
         var cart = await _context.Carts
             .Include(c => c.Items)
@@ -55,16 +83,20 @@ public class CartService : ICartService
             return (null, $"Only {product.Stock} item(s) available.");
         }
 
+        var choicesJson = selectedChoices != null ? System.Text.Json.JsonSerializer.Serialize(selectedChoices) : null;
+
         if (existingItem != null)
         {
             existingItem.Quantity += quantity;
+            existingItem.SelectedChoicesJson = choicesJson ?? existingItem.SelectedChoicesJson;
         }
         else
         {
             cart.Items.Add(new CartItem
             {
                 ProductId = productId,
-                Quantity = quantity
+                Quantity = quantity,
+                SelectedChoicesJson = choicesJson
             });
         }
 

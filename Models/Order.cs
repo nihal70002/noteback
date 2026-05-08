@@ -43,6 +43,7 @@ public class OrderItem
     
     public int Quantity { get; set; }
     public decimal Price { get; set; } // Price at the time of purchase
+    public string? SelectedChoicesJson { get; set; }
 }
 
 public class ShippingDetails

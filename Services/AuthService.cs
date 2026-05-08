@@ -94,4 +94,18 @@ public class AuthService : IAuthService
         await _context.SaveChangesAsync();
         return true;
     }
+
+    public async Task<(bool Success, string Message, string? ResetUrl)> ForgotPasswordAsync(string email)
+    {
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+        if (user == null) return (false, "User not found.", null);
+        // TODO: implement email reset flow
+        return (true, "Password reset link sent.", null);
+    }
+
+    public async Task<(bool Success, string Message)> ResetPasswordAsync(string token, string? email, string newPassword)
+    {
+        // TODO: validate token and reset password
+        return (false, "Not implemented.");
+    }
 }
