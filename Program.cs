@@ -64,7 +64,7 @@ builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
-builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
 
 // JWT setup
 var jwtKey = builder.Configuration["Jwt:Key"]

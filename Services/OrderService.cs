@@ -12,12 +12,20 @@ public class OrderService : IOrderService
 {
     private readonly NoteDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly IWhatsAppService _whatsAppService;
+    private readonly ILogger<OrderService> _logger;
     private static readonly HttpClient _httpClient = new HttpClient();
 
-    public OrderService(NoteDbContext context, IConfiguration configuration)
+    public OrderService(
+        NoteDbContext context,
+        IConfiguration configuration,
+        IWhatsAppService whatsAppService,
+        ILogger<OrderService> logger)
     {
         _context = context;
         _configuration = configuration;
+        _whatsAppService = whatsAppService;
+        _logger = logger;
     }
 
     public async Task<(string? OrderId, string? RazorpayOrderId, decimal Amount, string? Error)> CheckoutAsync(string cartId, string userId, ShippingDetails shippingDetails)
@@ -174,6 +182,8 @@ public class OrderService : IOrderService
             
             await _context.SaveChangesAsync();
 
+            await SendOrderWhatsAppNotificationsAsync(order, totalAmount);
+
             return (order.Id.ToString(), razorpayOrderId, totalAmount, null);
         }
         catch (DbUpdateException dbEx)
@@ -183,6 +193,57 @@ public class OrderService : IOrderService
         catch (Exception ex)
         {
             return (null, null, 0, $"Server Error: {ex.Message}");
+        }
+    }
+
+    private async Task SendOrderWhatsAppNotificationsAsync(Order order, decimal totalAmount)
+    {
+        try
+        {
+            var adminPhone = (_configuration["ADMIN_WHATSAPP_PHONE"]
+                ?? Environment.GetEnvironmentVariable("ADMIN_WHATSAPP_PHONE")
+                ?? Environment.GetEnvironmentVariable("WHATSAPP_ADMIN_PHONE"))?.Trim();
+
+            var itemSummary = string.Join(", ", order.Items.Select(item => $"{item.ProductId} x {item.Quantity}"));
+            var adminMessage =
+                $"New order received on Papercues.\n" +
+                $"Order ID: #{order.Id}\n" +
+                $"Customer: {order.FullName}\n" +
+                $"Phone: {order.PhoneNumber}\n" +
+                $"Amount: ₹{totalAmount:F2}\n" +
+                $"Items: {itemSummary}\n" +
+                $"Address: {order.DeliveryAddress}";
+
+            if (!string.IsNullOrWhiteSpace(adminPhone))
+            {
+                var adminResult = await _whatsAppService.SendMessageAsync(adminPhone, adminMessage);
+                if (!adminResult.Success)
+                {
+                    _logger.LogError("Admin WhatsApp notification failed for order {OrderId}: {Error}", order.Id, adminResult.ErrorMessage);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Admin WhatsApp notification skipped for order {OrderId}: ADMIN_WHATSAPP_PHONE is not configured.", order.Id);
+            }
+
+            if (!string.IsNullOrWhiteSpace(order.PhoneNumber))
+            {
+                var customerMessage =
+                    $"Hi {order.FullName}, your Papercues order #{order.Id} has been placed successfully.\n" +
+                    $"Amount: ₹{totalAmount:F2}\n" +
+                    $"We will notify you when your order is processed.";
+
+                var customerResult = await _whatsAppService.SendMessageAsync(order.PhoneNumber, customerMessage);
+                if (!customerResult.Success)
+                {
+                    _logger.LogError("Customer WhatsApp notification failed for order {OrderId}: {Error}", order.Id, customerResult.ErrorMessage);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WhatsApp notification flow failed for order {OrderId}. Order creation was not affected.", order.Id);
         }
     }
 
