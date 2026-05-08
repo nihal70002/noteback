@@ -322,9 +322,43 @@ public class OrderService : IOrderService
                 order.Status = "Processing";
                 order.RazorpayPaymentId = paymentId;
                 await _context.SaveChangesAsync();
+
+                await SendAdminPaymentVerifiedWhatsAppAsync(order);
+
                 return true;
             }
         }
         return false;
+    }
+
+    private async Task SendAdminPaymentVerifiedWhatsAppAsync(Order order)
+    {
+        const string adminPhone = "+917591907000";
+        var message =
+            $"Payment verified for Papercues order.\n" +
+            $"Order ID: #{order.Id}\n" +
+            $"Customer: {order.FullName}\n" +
+            $"Total Amount: ₹{order.TotalAmount:F2}";
+
+        try
+        {
+            _logger.LogInformation("Attempting WhatsApp send");
+            _logger.LogInformation("WhatsApp recipient: {Recipient}", adminPhone);
+            _logger.LogInformation("WhatsApp message content: {Message}", message);
+
+            var result = await _whatsAppService.SendMessageAsync(adminPhone, message);
+
+            if (result.Success)
+            {
+                _logger.LogInformation("Twilio SID: {Sid}", result.MessageSid);
+                return;
+            }
+
+            _logger.LogError("Twilio WhatsApp send failed for order {OrderId}: {Error}", order.Id, result.ErrorMessage);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Twilio exception details while sending payment notification for order {OrderId}: {Message}", order.Id, ex.Message);
+        }
     }
 }
