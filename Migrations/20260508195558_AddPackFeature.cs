@@ -12,54 +12,77 @@ namespace Note.Backend.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<DateTime>(
-                name: "PasswordResetTokenExpiresAt",
-                table: "Users",
-                type: "timestamp with time zone",
-                nullable: true);
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Users' AND column_name='PasswordResetTokenExpiresAt') THEN
+                        ALTER TABLE ""Users"" ADD COLUMN ""PasswordResetTokenExpiresAt"" timestamp with time zone NULL;
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.AddColumn<string>(
-                name: "PasswordResetTokenHash",
-                table: "Users",
-                type: "text",
-                nullable: true);
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Users' AND column_name='PasswordResetTokenHash') THEN
+                        ALTER TABLE ""Users"" ADD COLUMN ""PasswordResetTokenHash"" text NULL;
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.AddColumn<bool>(
-                name: "IsPack",
-                table: "Products",
-                type: "boolean",
-                nullable: false,
-                defaultValue: false);
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Products' AND column_name='IsPack') THEN
+                        ALTER TABLE ""Products"" ADD COLUMN ""IsPack"" boolean NOT NULL DEFAULT false;
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.AddColumn<int>(
-                name: "PackSize",
-                table: "Products",
-                type: "integer",
-                nullable: true);
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Products' AND column_name='PackSize') THEN
+                        ALTER TABLE ""Products"" ADD COLUMN ""PackSize"" integer NULL;
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.AddColumn<string>(
-                name: "RazorpayOrderId",
-                table: "Orders",
-                type: "text",
-                nullable: true);
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Orders' AND column_name='RazorpayOrderId') THEN
+                        ALTER TABLE ""Orders"" ADD COLUMN ""RazorpayOrderId"" text NULL;
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.AddColumn<string>(
-                name: "RazorpayPaymentId",
-                table: "Orders",
-                type: "text",
-                nullable: true);
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Orders' AND column_name='RazorpayPaymentId') THEN
+                        ALTER TABLE ""Orders"" ADD COLUMN ""RazorpayPaymentId"" text NULL;
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.AddColumn<string>(
-                name: "SelectedChoicesJson",
-                table: "OrderItems",
-                type: "text",
-                nullable: true);
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='OrderItems' AND column_name='SelectedChoicesJson') THEN
+                        ALTER TABLE ""OrderItems"" ADD COLUMN ""SelectedChoicesJson"" text NULL;
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.AddColumn<string>(
-                name: "SelectedChoicesJson",
-                table: "CartItems",
-                type: "text",
-                nullable: true);
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='CartItems' AND column_name='SelectedChoicesJson') THEN
+                        ALTER TABLE ""CartItems"" ADD COLUMN ""SelectedChoicesJson"" text NULL;
+                    END IF;
+                END $$;
+            ");
 
             migrationBuilder.CreateTable(
                 name: "PackChoices",
@@ -163,40 +186,79 @@ namespace Note.Backend.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PackChoices");
+            migrationBuilder.Sql(@"DROP TABLE IF EXISTS ""PackChoices"";");
 
-            migrationBuilder.DropColumn(
-                name: "PasswordResetTokenExpiresAt",
-                table: "Users");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Users' AND column_name='PasswordResetTokenExpiresAt') THEN
+                        ALTER TABLE ""Users"" DROP COLUMN ""PasswordResetTokenExpiresAt"";
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.DropColumn(
-                name: "PasswordResetTokenHash",
-                table: "Users");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Users' AND column_name='PasswordResetTokenHash') THEN
+                        ALTER TABLE ""Users"" DROP COLUMN ""PasswordResetTokenHash"";
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.DropColumn(
-                name: "IsPack",
-                table: "Products");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Products' AND column_name='IsPack') THEN
+                        ALTER TABLE ""Products"" DROP COLUMN ""IsPack"";
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.DropColumn(
-                name: "PackSize",
-                table: "Products");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Products' AND column_name='PackSize') THEN
+                        ALTER TABLE ""Products"" DROP COLUMN ""PackSize"";
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.DropColumn(
-                name: "RazorpayOrderId",
-                table: "Orders");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Orders' AND column_name='RazorpayOrderId') THEN
+                        ALTER TABLE ""Orders"" DROP COLUMN ""RazorpayOrderId"";
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.DropColumn(
-                name: "RazorpayPaymentId",
-                table: "Orders");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Orders' AND column_name='RazorpayPaymentId') THEN
+                        ALTER TABLE ""Orders"" DROP COLUMN ""RazorpayPaymentId"";
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.DropColumn(
-                name: "SelectedChoicesJson",
-                table: "OrderItems");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='OrderItems' AND column_name='SelectedChoicesJson') THEN
+                        ALTER TABLE ""OrderItems"" DROP COLUMN ""SelectedChoicesJson"";
+                    END IF;
+                END $$;
+            ");
 
-            migrationBuilder.DropColumn(
-                name: "SelectedChoicesJson",
-                table: "CartItems");
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='CartItems' AND column_name='SelectedChoicesJson') THEN
+                        ALTER TABLE ""CartItems"" DROP COLUMN ""SelectedChoicesJson"";
+                    END IF;
+                END $$;
+            ");
         }
     }
 }
