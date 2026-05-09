@@ -52,6 +52,40 @@ public class AuthController : ControllerBase
 
         return Ok(new { Message = "Password changed successfully" });
     }
+
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        var (success, message, resetUrl) = await _authService.ForgotPasswordAsync(request.Email);
+        if (!success)
+        {
+            return BadRequest(new { Message = message });
+        }
+        return Ok(new { Message = message, ResetUrl = resetUrl });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        var (success, message) = await _authService.ResetPasswordAsync(request.Token, request.Email, request.NewPassword);
+        if (!success)
+        {
+            return BadRequest(new { Message = message });
+        }
+        return Ok(new { Message = message });
+    }
+}
+
+public class ForgotPasswordRequest
+{
+    public string Email { get; set; } = string.Empty;
+}
+
+public class ResetPasswordRequest
+{
+    public string Token { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string NewPassword { get; set; } = string.Empty;
 }
 
 public class ChangePasswordRequest

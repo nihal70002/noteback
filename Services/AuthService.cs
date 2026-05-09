@@ -99,13 +99,41 @@ public class AuthService : IAuthService
     {
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
         if (user == null) return (false, "User not found.", null);
-        // TODO: implement email reset flow
-        return (true, "Password reset link sent.", null);
+
+        var rawToken = Guid.NewGuid().ToString("N");
+        user.PasswordResetTokenHash = BCrypt.Net.BCrypt.HashPassword(rawToken);
+        user.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddHours(1);
+        await _context.SaveChangesAsync();
+
+        var resetUrl = $"https://papercues.in/reset-password?token={rawToken}&email={Uri.EscapeDataString(email)}";
+        return (true, "Password reset link generated.", resetUrl);
     }
 
     public async Task<(bool Success, string Message)> ResetPasswordAsync(string token, string? email, string newPassword)
     {
-        // TODO: validate token and reset password
-        return (false, "Not implemented.");
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(newPassword))
+        {
+            return (false, "Invalid request.");
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+        if (user == null) return (false, "Invalid request.");
+
+        if (string.IsNullOrEmpty(user.PasswordResetTokenHash) || user.PasswordResetTokenExpiresAt == null || user.PasswordResetTokenExpiresAt < DateTime.UtcNow)
+        {
+            return (false, "Reset token has expired.");
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(token, user.PasswordResetTokenHash))
+        {
+            return (false, "Invalid reset token.");
+        }
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        user.PasswordResetTokenHash = null;
+        user.PasswordResetTokenExpiresAt = null;
+        await _context.SaveChangesAsync();
+
+        return (true, "Password reset successfully.");
     }
 }
