@@ -24,46 +24,90 @@ public class EmailService : IEmailService
     {
         try
         {
-            var host = Environment.GetEnvironmentVariable("SMTP_HOST") ?? _config["EmailSettings:SmtpHost"];
-            var portString = Environment.GetEnvironmentVariable("SMTP_PORT") ?? _config["EmailSettings:SmtpPort"];
-            var user = Environment.GetEnvironmentVariable("SMTP_EMAIL") ?? _config["EmailSettings:SmtpUser"];
-            var pass = Environment.GetEnvironmentVariable("SMTP_PASSWORD") ?? _config["EmailSettings:SmtpPass"];
-            var fromName = Environment.GetEnvironmentVariable("SMTP_FROM_NAME") ?? _config["EmailSettings:FromName"] ?? "Papercues Support";
+            var host = Environment.GetEnvironmentVariable("SMTP_HOST")
+                       ?? _config["EmailSettings:SmtpHost"];
 
-            // If the app is accidentally using the placeholder from appsettings.json, stop immediately
-            if (user == "your-email@gmail.com" || string.IsNullOrEmpty(pass))
+            var portString = Environment.GetEnvironmentVariable("SMTP_PORT")
+                             ?? _config["EmailSettings:SmtpPort"];
+
+            var user = Environment.GetEnvironmentVariable("SMTP_EMAIL")
+                       ?? _config["EmailSettings:SmtpUser"];
+
+            var pass = Environment.GetEnvironmentVariable("SMTP_PASSWORD")
+                       ?? _config["EmailSettings:SmtpPass"];
+
+            var fromName = Environment.GetEnvironmentVariable("SMTP_FROM_NAME")
+                           ?? _config["EmailSettings:FromName"]
+                           ?? "Papercues Support";
+
+            // Validate SMTP config
+            if (string.IsNullOrWhiteSpace(host) ||
+                string.IsNullOrWhiteSpace(user) ||
+                string.IsNullOrWhiteSpace(pass))
             {
-                _logger.LogWarning("Email sending failed because SMTP credentials are not fully configured or are still using placeholders.");
+                _logger.LogWarning("SMTP credentials are missing.");
                 return;
             }
 
-            if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
+            // Prevent placeholder config usage
+            if (user.Contains("your-email"))
             {
-                _logger.LogWarning("Email sending failed because SMTP credentials are not fully configured.");
+                _logger.LogWarning("SMTP is still using placeholder credentials.");
                 return;
             }
 
-            if (!int.TryParse(portString, out int port)) port = 587;
+            // Parse port safely
+            if (!int.TryParse(portString, out int port))
+            {
+                port = 587;
+            }
+
+            _logger.LogInformation("Preparing password reset email...");
 
             var email = new MimeMessage();
+
             email.From.Add(new MailboxAddress(fromName, user));
+
             email.To.Add(MailboxAddress.Parse(toEmail));
+
             email.Subject = subject;
-            email.Body = new TextPart(TextFormat.Html) { Text = htmlMessage };
+
+            email.Body = new TextPart(TextFormat.Html)
+            {
+                Text = htmlMessage
+            };
 
             using var smtp = new SmtpClient();
-            smtp.Timeout = 10000; // 10 seconds timeout
-            await smtp.ConnectAsync(host, port, SecureSocketOptions.StartTls);
+
+            // Disable unsupported auth methods sometimes causing issues
+            smtp.AuthenticationMechanisms.Remove("XOAUTH2");
+
+            // Increase timeout for Railway cold starts/network latency
+            smtp.Timeout = 30000;
+
+            _logger.LogInformation($"Connecting to SMTP server: {host}:{port}");
+
+            await smtp.ConnectAsync(
+                host,
+                port,
+                SecureSocketOptions.StartTls
+            );
+
+            _logger.LogInformation("SMTP connection successful.");
+
             await smtp.AuthenticateAsync(user, pass);
+
+            _logger.LogInformation("SMTP authentication successful.");
+
             await smtp.SendAsync(email);
+
+            _logger.LogInformation("Password reset email sent successfully.");
+
             await smtp.DisconnectAsync(true);
-            
-            _logger.LogInformation($"Successfully sent password reset email to {toEmail}");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Failed to send email to {toEmail}");
-            // We don't throw here to avoid exposing internal server errors to the user during auth flow.
+            _logger.LogError(ex, "SMTP EMAIL ERROR");
         }
     }
 }
