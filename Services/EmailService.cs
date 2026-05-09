@@ -53,7 +53,7 @@ public class EmailService : IEmailService
 
             using var smtp = new SmtpClient();
             smtp.Timeout = 10000; // 10 seconds timeout
-            await smtp.ConnectAsync(host, port, SecureSocketOptions.Auto);
+            await smtp.ConnectAsync(host, port, SecureSocketOptions.StartTls);
             await smtp.AuthenticateAsync(user, pass);
             await smtp.SendAsync(email);
             await smtp.DisconnectAsync(true);
