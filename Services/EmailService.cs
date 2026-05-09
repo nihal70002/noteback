@@ -24,11 +24,18 @@ public class EmailService : IEmailService
     {
         try
         {
-            var host = _config["EmailSettings:SmtpHost"] ?? Environment.GetEnvironmentVariable("EmailSettings__SmtpHost");
-            var portString = _config["EmailSettings:SmtpPort"] ?? Environment.GetEnvironmentVariable("EmailSettings__SmtpPort") ?? "587";
-            var user = _config["EmailSettings:SmtpUser"] ?? Environment.GetEnvironmentVariable("EmailSettings__SmtpUser");
-            var pass = _config["EmailSettings:SmtpPass"] ?? Environment.GetEnvironmentVariable("EmailSettings__SmtpPass");
-            var fromName = _config["EmailSettings:FromName"] ?? Environment.GetEnvironmentVariable("EmailSettings__FromName") ?? "Papercues Support";
+            var host = Environment.GetEnvironmentVariable("SMTP_HOST") ?? _config["EmailSettings:SmtpHost"];
+            var portString = Environment.GetEnvironmentVariable("SMTP_PORT") ?? _config["EmailSettings:SmtpPort"];
+            var user = Environment.GetEnvironmentVariable("SMTP_EMAIL") ?? _config["EmailSettings:SmtpUser"];
+            var pass = Environment.GetEnvironmentVariable("SMTP_PASSWORD") ?? _config["EmailSettings:SmtpPass"];
+            var fromName = Environment.GetEnvironmentVariable("SMTP_FROM_NAME") ?? _config["EmailSettings:FromName"] ?? "Papercues Support";
+
+            // If the app is accidentally using the placeholder from appsettings.json, stop immediately
+            if (user == "your-email@gmail.com" || string.IsNullOrEmpty(pass))
+            {
+                _logger.LogWarning("Email sending failed because SMTP credentials are not fully configured or are still using placeholders.");
+                return;
+            }
 
             if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
             {
@@ -45,7 +52,8 @@ public class EmailService : IEmailService
             email.Body = new TextPart(TextFormat.Html) { Text = htmlMessage };
 
             using var smtp = new SmtpClient();
-            await smtp.ConnectAsync(host, port, SecureSocketOptions.StartTls);
+            smtp.Timeout = 10000; // 10 seconds timeout
+            await smtp.ConnectAsync(host, port, SecureSocketOptions.Auto);
             await smtp.AuthenticateAsync(user, pass);
             await smtp.SendAsync(email);
             await smtp.DisconnectAsync(true);

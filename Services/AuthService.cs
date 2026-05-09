@@ -122,7 +122,8 @@ public class AuthService : IAuthService
             <p>This link will expire in 1 hour.</p>
         ";
         
-        await _emailService.SendEmailAsync(email, emailSubject, emailBody);
+        // Send email in background so the user doesn't wait for SMTP connection
+        _ = Task.Run(() => _emailService.SendEmailAsync(email, emailSubject, emailBody));
 
         return (true, "If an account exists, password reset instructions have been sent.", null);
     }
