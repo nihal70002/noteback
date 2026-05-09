@@ -85,13 +85,15 @@ public class EmailService : IEmailService
             // Increase timeout for Railway cold starts/network latency
             smtp.Timeout = 30000;
 
+            smtp.ServerCertificateValidationCallback = (s, c, h, e) => true;
+
             _logger.LogInformation($"Connecting to SMTP server: {host}:{port}");
 
             await smtp.ConnectAsync(
-                host,
-                port,
-                SecureSocketOptions.StartTls
-            );
+    host,
+    465,
+    SecureSocketOptions.SslOnConnect
+);
 
             _logger.LogInformation("SMTP connection successful.");
 
