@@ -56,12 +56,10 @@ public class AuthController : ControllerBase
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
     {
-        var (success, message, resetUrl) = await _authService.ForgotPasswordAsync(request.Email);
-        if (!success)
-        {
-            return BadRequest(new { Message = message });
-        }
-        return Ok(new { Message = message, ResetUrl = resetUrl });
+        var (success, message, _) = await _authService.ForgotPasswordAsync(request.Email);
+        
+        // Always return Ok to prevent enumeration
+        return Ok(new { Message = message });
     }
 
     [HttpPost("reset-password")]

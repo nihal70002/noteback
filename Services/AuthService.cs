@@ -12,11 +12,13 @@ public class AuthService : IAuthService
 {
     private readonly NoteDbContext _context;
     private readonly IConfiguration _config;
+    private readonly IEmailService _emailService;
 
-    public AuthService(NoteDbContext context, IConfiguration config)
+    public AuthService(NoteDbContext context, IConfiguration config, IEmailService emailService)
     {
         _context = context;
         _config = config;
+        _emailService = emailService;
     }
 
     public async Task<string> RegisterAsync(string username, string email, string password, string role = "User")
@@ -98,7 +100,11 @@ public class AuthService : IAuthService
     public async Task<(bool Success, string Message, string? ResetUrl)> ForgotPasswordAsync(string email)
     {
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-        if (user == null) return (false, "User not found.", null);
+        if (user == null) 
+        {
+            // Security: Always return success to prevent email enumeration
+            return (true, "If an account exists, password reset instructions have been sent.", null);
+        }
 
         var rawToken = Guid.NewGuid().ToString("N");
         user.PasswordResetTokenHash = BCrypt.Net.BCrypt.HashPassword(rawToken);
@@ -106,7 +112,19 @@ public class AuthService : IAuthService
         await _context.SaveChangesAsync();
 
         var resetUrl = $"https://papercues.in/reset-password?token={rawToken}&email={Uri.EscapeDataString(email)}";
-        return (true, "Password reset link generated.", resetUrl);
+        
+        var emailSubject = "Reset Your Password - Papercues";
+        var emailBody = $@"
+            <h2>Password Reset Request</h2>
+            <p>You requested to reset your password. Click the link below to set a new password:</p>
+            <p><a href='{resetUrl}'>Reset Password</a></p>
+            <p>If you did not request this, please ignore this email.</p>
+            <p>This link will expire in 1 hour.</p>
+        ";
+        
+        await _emailService.SendEmailAsync(email, emailSubject, emailBody);
+
+        return (true, "If an account exists, password reset instructions have been sent.", null);
     }
 
     public async Task<(bool Success, string Message)> ResetPasswordAsync(string token, string? email, string newPassword)
