@@ -20,6 +20,7 @@ public class NoteDbContext : DbContext
     public DbSet<Coupon> Coupons { get; set; }
     public DbSet<BusinessExpense> BusinessExpenses { get; set; }
     public DbSet<StorefrontConfig> StorefrontConfigs { get; set; }
+    public DbSet<ShippingSettings> ShippingSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
