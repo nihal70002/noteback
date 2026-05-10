@@ -9,5 +9,6 @@ public class ProductReview
     public User? User { get; set; }
     public int Rating { get; set; }
     public string Comment { get; set; } = string.Empty;
+    public string Images { get; set; } = string.Empty; // JSON array of image URLs
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
