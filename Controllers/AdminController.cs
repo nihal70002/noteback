@@ -247,6 +247,59 @@ public class AdminController : ControllerBase
         return Ok(new { Message = "User role updated." });
     }
 
+    [HttpGet("shipping-settings")]
+    public async Task<IActionResult> GetShippingSettings()
+    {
+        var settings = await _context.ShippingSettings
+            .OrderByDescending(s => s.Id)
+            .FirstOrDefaultAsync();
+
+        if (settings == null)
+        {
+            settings = new ShippingSettings();
+        }
+
+        return Ok(settings);
+    }
+
+    [HttpPost("shipping-settings")]
+    public async Task<IActionResult> SaveShippingSettings([FromBody] ShippingSettings settings)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var existingSettings = await _context.ShippingSettings
+            .OrderByDescending(s => s.Id)
+            .FirstOrDefaultAsync();
+
+        if (existingSettings != null)
+        {
+            existingSettings.StandardShippingFee = settings.StandardShippingFee;
+            existingSettings.FreeShippingThreshold = settings.FreeShippingThreshold;
+            existingSettings.FreeShippingAmount = settings.FreeShippingAmount;
+            existingSettings.FreeShippingType = settings.FreeShippingType;
+            existingSettings.Enabled = settings.Enabled;
+            existingSettings.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            settings.UpdatedAt = DateTime.UtcNow;
+            _context.ShippingSettings.Add(settings);
+        }
+
+        try
+        {
+            await _context.SaveChangesAsync();
+            return Ok(new { Message = "Shipping settings saved successfully!" });
+        }
+        catch (DbUpdateException)
+        {
+            return StatusCode(500, new { Message = "Could not save shipping settings. Please try again." });
+        }
+    }
+
     [HttpPut("users/{id}/block")]
     public async Task<IActionResult> UpdateUserBlockStatus(string id, [FromBody] UpdateUserBlockStatusRequest request)
     {

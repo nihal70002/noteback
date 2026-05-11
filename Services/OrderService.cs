@@ -93,7 +93,26 @@ public class OrderService : IOrderService
             discountAmount = Math.Round(subtotal * (coupon.DiscountPercent / 100m), 2);
         }
 
-        var shippingFee = subtotal - discountAmount >= 50m ? 0m : 5m;
+        // Get shipping settings from database
+        var shippingSettings = await _context.ShippingSettings
+            .OrderByDescending(s => s.Id)
+            .FirstOrDefaultAsync();
+
+        if (shippingSettings == null || !shippingSettings.Enabled)
+        {
+            shippingSettings = new ShippingSettings();
+        }
+
+        decimal shippingFee;
+        if (shippingSettings.FreeShippingType == "amount")
+        {
+            shippingFee = subtotal - discountAmount >= shippingSettings.FreeShippingAmount ? 0m : shippingSettings.StandardShippingFee;
+        }
+        else
+        {
+            var totalItems = cart.Items.Sum(i => i.Quantity);
+            shippingFee = totalItems >= shippingSettings.FreeShippingThreshold ? 0m : shippingSettings.StandardShippingFee;
+        }
         var totalAmount = subtotal - discountAmount + shippingFee;
 
         var order = new Order

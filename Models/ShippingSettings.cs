@@ -13,7 +13,7 @@ public class ShippingSettings
     public int FreeShippingThreshold { get; set; } = 3; // for quantity-based
     
     [Range(0, 10000)]
-    public decimal FreeShippingAmount { get; set; } = 50m; // for amount-based
+    public decimal FreeShippingAmount { get; set; } = 500m; // for amount-based
     
     [Required]
     [RegularExpression("^(quantity|amount)$", ErrorMessage = "Free shipping type must be 'quantity' or 'amount'.")]
