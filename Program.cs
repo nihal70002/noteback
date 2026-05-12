@@ -102,14 +102,13 @@ builder.Services.AddCors(options =>
             .SetPreflightMaxAge(TimeSpan.FromDays(1));
     });
     
-    // Add a fallback policy for debugging
+    // Add a fallback policy for debugging (without credentials to avoid conflicts)
     options.AddPolicy("AllowAll", policy =>
     {
         policy
             .AllowAnyOrigin()
             .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
+            .AllowAnyHeader();
     });
 });
 
