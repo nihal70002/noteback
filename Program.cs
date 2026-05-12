@@ -96,10 +96,20 @@ builder.Services.AddCors(options =>
                 "http://localhost:3000",
                 "https://papercues.in"
             )
-            .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-            .WithHeaders("Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With")
+            .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
+            .WithHeaders("Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With", "X-CSRF-Token")
             .AllowCredentials()
             .SetPreflightMaxAge(TimeSpan.FromDays(1));
+    });
+    
+    // Add a fallback policy for debugging
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy
+            .AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
     });
 });
 
@@ -152,12 +162,18 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// IMPORTANT: Order matters! 
+// 1. HTTPS redirection first
 app.UseHttpsRedirection();
 
-// CORS must be called before UseRouting and UseAuthentication
-app.UseCors("AllowFrontend");
+// 2. CORS must be called BEFORE routing and authentication
+// Using AllowAll temporarily for debugging - change back to AllowFrontend once CORS is working
+app.UseCors("AllowAll");
 
+// 3. Then routing
 app.UseRouting();
+
+// 4. Then authentication and authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
