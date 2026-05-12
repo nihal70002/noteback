@@ -21,17 +21,16 @@ public class AuthService : IAuthService
         _emailService = emailService;
     }
 
-    public async Task<string> RegisterAsync(string username, string email, string password, string role = "User")
+    public async Task<string> RegisterAsync(string phoneNumber, string password, string role = "User")
     {
-        if (await _context.Users.AnyAsync(u => u.Email == email))
+        if (await _context.Users.AnyAsync(u => u.PhoneNumber == phoneNumber))
         {
-            return "Email already exists";
+            return "Phone number already exists";
         }
 
         var user = new User
         {
-            Username = username,
-            Email = email,
+            PhoneNumber = phoneNumber,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Role = role
         };
@@ -42,9 +41,9 @@ public class AuthService : IAuthService
         return string.Empty; // Success
     }
 
-    public async Task<(string? Token, string? Error)> LoginAsync(string email, string password)
+    public async Task<(string? Token, string? Error)> LoginAsync(string phoneNumber, string password)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber);
         if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
         {
             return (null, "Invalid credentials");
@@ -66,8 +65,8 @@ public class AuthService : IAuthService
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim(ClaimTypes.Name, user.Username),
+            new Claim(JwtRegisteredClaimNames.Email, user.PhoneNumber),
+            new Claim(ClaimTypes.Name, user.PhoneNumber),
             new Claim(ClaimTypes.Role, user.Role),
             new Claim("Role", user.Role) // For easy access if needed
         };
@@ -97,12 +96,12 @@ public class AuthService : IAuthService
         return true;
     }
 
-    public async Task<(bool Success, string Message, string? ResetUrl)> ForgotPasswordAsync(string email)
+    public async Task<(bool Success, string Message, string? ResetUrl)> ForgotPasswordAsync(string phoneNumber)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber);
         if (user == null) 
         {
-            // Security: Always return success to prevent email enumeration
+            // Security: Always return success to prevent phone enumeration
             return (true, "If an account exists, password reset instructions have been sent.", null);
         }
 
@@ -111,7 +110,7 @@ public class AuthService : IAuthService
         user.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddHours(1);
         await _context.SaveChangesAsync();
 
-        var resetUrl = $"https://papercues.in/reset-password?token={rawToken}&email={Uri.EscapeDataString(email)}";
+        var resetUrl = $"https://papercues.in/reset-password?token={rawToken}&phoneNumber={Uri.EscapeDataString(phoneNumber)}";
         
         var emailSubject = "Reset Your Password - Papercues";
         var emailBody = $@"
@@ -122,20 +121,20 @@ public class AuthService : IAuthService
             <p>This link will expire in 1 hour.</p>
         ";
         
-        // Send email in background so the user doesn't wait for SMTP connection
-        _ = Task.Run(() => _emailService.SendEmailAsync(email, emailSubject, emailBody));
+        // Send email in background so user doesn't wait for SMTP connection
+        _ = Task.Run(() => _emailService.SendEmailAsync(phoneNumber + "@sms.com", emailSubject, emailBody));
 
         return (true, "If an account exists, password reset instructions have been sent.", null);
     }
 
-    public async Task<(bool Success, string Message)> ResetPasswordAsync(string token, string? email, string newPassword)
+    public async Task<(bool Success, string Message)> ResetPasswordAsync(string token, string? phoneNumber, string newPassword)
     {
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(newPassword))
+        if (string.IsNullOrWhiteSpace(phoneNumber) || string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(newPassword))
         {
             return (false, "Invalid request.");
         }
 
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber);
         if (user == null) return (false, "Invalid request.");
 
         if (string.IsNullOrEmpty(user.PasswordResetTokenHash) || user.PasswordResetTokenExpiresAt == null || user.PasswordResetTokenExpiresAt < DateTime.UtcNow)

@@ -18,7 +18,7 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
-        var error = await _authService.RegisterAsync(request.Username, request.Email, request.Password, request.Role ?? "User");
+        var error = await _authService.RegisterAsync(request.PhoneNumber, request.Password, request.Role ?? "User");
         if (!string.IsNullOrEmpty(error))
         {
             return BadRequest(new { Message = error });
@@ -29,7 +29,7 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
-        var (token, error) = await _authService.LoginAsync(request.Email, request.Password);
+        var (token, error) = await _authService.LoginAsync(request.PhoneNumber, request.Password);
         if (token == null)
         {
             return Unauthorized(new { Message = error ?? "Invalid credentials" });
@@ -94,14 +94,13 @@ public class ChangePasswordRequest
 
 public class RegisterRequest
 {
-    public string Username { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string? Role { get; set; }
 }
 
 public class LoginRequest
 {
-    public string Email { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
 }
