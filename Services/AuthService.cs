@@ -21,16 +21,29 @@ public class AuthService : IAuthService
         _emailService = emailService;
     }
 
-    public async Task<string> RegisterAsync(string username, string email, string password, string role = "User")
+    public async Task<string> RegisterAsync(string username, string phoneNumber, string password, string role = "User")
     {
-        if (await _context.Users.AnyAsync(u => u.PhoneNumber == email))
+        // Phone number validation
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+        {
+            return "Phone number is required";
+        }
+        
+        phoneNumber = phoneNumber.Trim();
+        
+        if (phoneNumber.Length < 10)
+        {
+            return "Phone number must be at least 10 digits";
+        }
+        
+        if (await _context.Users.AnyAsync(u => u.PhoneNumber == phoneNumber))
         {
             return "Phone number already exists";
         }
 
         var user = new User
         {
-            PhoneNumber = email,
+            PhoneNumber = phoneNumber,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Role = role
         };
@@ -65,7 +78,7 @@ public class AuthService : IAuthService
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-            new Claim(JwtRegisteredClaimNames.Email, user.PhoneNumber),
+            new Claim("phoneNumber", user.PhoneNumber),
             new Claim(ClaimTypes.Name, user.PhoneNumber),
             new Claim(ClaimTypes.Role, user.Role),
             new Claim("Role", user.Role) // For easy access if needed
@@ -122,7 +135,7 @@ public class AuthService : IAuthService
         ";
         
         // Send email in background so user doesn't wait for SMTP connection
-        _ = Task.Run(() => _emailService.SendEmailAsync(phoneNumber + "@sms.com", emailSubject, emailBody));
+        _ = Task.Run(() => _emailService.SendEmailAsync(phoneNumber, emailSubject, emailBody));
 
         return (true, "If an account exists, password reset instructions have been sent.", null);
     }
@@ -135,7 +148,10 @@ public class AuthService : IAuthService
         }
 
         var user = await _context.Users.FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber);
-        if (user == null) return (false, "Invalid request.");
+        if (user == null) 
+        {
+            return (false, "Invalid request.");
+        }
 
         if (string.IsNullOrEmpty(user.PasswordResetTokenHash) || user.PasswordResetTokenExpiresAt == null || user.PasswordResetTokenExpiresAt < DateTime.UtcNow)
         {

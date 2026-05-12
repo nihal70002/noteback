@@ -18,7 +18,7 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
-        var error = await _authService.RegisterAsync("", request.PhoneNumber, request.Password, request.Role ?? "User");
+        var error = await _authService.RegisterAsync(request.Username ?? "", request.PhoneNumber, request.Password, request.Role ?? "User");
         if (!string.IsNullOrEmpty(error))
         {
             return BadRequest(new { Message = error });
@@ -56,7 +56,7 @@ public class AuthController : ControllerBase
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
     {
-        var (success, message, _) = await _authService.ForgotPasswordAsync(request.Email);
+        var (success, message, _) = await _authService.ForgotPasswordAsync(request.PhoneNumber);
         
         // Always return Ok to prevent enumeration
         return Ok(new { Message = message });
@@ -65,7 +65,7 @@ public class AuthController : ControllerBase
     [HttpPost("reset-password")]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
     {
-        var (success, message) = await _authService.ResetPasswordAsync(request.Token, request.Email, request.NewPassword);
+        var (success, message) = await _authService.ResetPasswordAsync(request.Token, request.PhoneNumber, request.NewPassword);
         if (!success)
         {
             return BadRequest(new { Message = message });
@@ -76,13 +76,13 @@ public class AuthController : ControllerBase
 
 public class ForgotPasswordRequest
 {
-    public string Email { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
 }
 
 public class ResetPasswordRequest
 {
     public string Token { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
     public string NewPassword { get; set; } = string.Empty;
 }
 
@@ -94,6 +94,7 @@ public class ChangePasswordRequest
 
 public class RegisterRequest
 {
+    public string Username { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string? Role { get; set; }
