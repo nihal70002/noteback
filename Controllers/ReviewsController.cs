@@ -15,11 +15,13 @@ public class ReviewsController : ControllerBase
 {
     private readonly NoteDbContext _context;
     private readonly ICloudinaryService _cloudinaryService;
+    private readonly ILogger<ReviewsController> _logger;
 
-    public ReviewsController(NoteDbContext context, ICloudinaryService cloudinaryService)
+    public ReviewsController(NoteDbContext context, ICloudinaryService cloudinaryService, ILogger<ReviewsController> logger)
     {
         _context = context;
         _cloudinaryService = cloudinaryService;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -36,15 +38,28 @@ public class ReviewsController : ControllerBase
                 r.Comment,
                 r.CreatedAt,
                 Username = r.User != null ? r.User.Username : "Customer",
-                Images = !string.IsNullOrEmpty(r.Images) ? JsonSerializer.Deserialize<string[]>(r.Images) : new string[0]
+                r.Images
             })
             .ToListAsync();
 
-        return Ok(reviews);
+        var response = reviews.Select(r => new
+        {
+            r.Id,
+            r.Rating,
+            r.Comment,
+            r.CreatedAt,
+            r.Username,
+            Images = DeserializeReviewImages(r.Images)
+        });
+
+        _logger.LogInformation("Returning {ReviewCount} reviews for product {ProductId}", reviews.Count, productId);
+
+        return Ok(response);
     }
 
     [HttpPost]
     [Authorize]
+    [Consumes("multipart/form-data")]
     [RequestSizeLimit(1024L * 1024L * 15L)] // 15MB for multiple images
     public async Task<IActionResult> UpsertReview(string productId, [FromForm] IFormFileCollection? files, [FromForm] string? rating, [FromForm] string? comment)
     {
@@ -71,17 +86,38 @@ public class ReviewsController : ControllerBase
         review.CreatedAt = DateTime.UtcNow;
 
         // Handle image uploads
-        var imageUrls = new List<string>();
-        if (files != null && files.Count > 0)
+        var uploadedFiles = Request.HasFormContentType
+            ? Request.Form.Files
+                .Where(file =>
+                    file.Name.Equals("images", StringComparison.OrdinalIgnoreCase) ||
+                    file.Name.Equals("files", StringComparison.OrdinalIgnoreCase))
+                .ToList()
+            : files?.ToList() ?? [];
+
+        if (uploadedFiles.Count == 0 && files is { Count: > 0 })
         {
-            foreach (var file in files.Take(3)) // Max 3 images
+            uploadedFiles = files.ToList();
+        }
+
+        _logger.LogInformation("Review upload for product {ProductId}: received {FileCount} files", productId, uploadedFiles.Count);
+
+        var imageUrls = new List<string>();
+        if (uploadedFiles.Count > 0)
+        {
+            foreach (var file in uploadedFiles.Take(3)) // Max 3 images
             {
+                _logger.LogInformation(
+                    "Uploading review image {FileName} ({ContentType}, {Length} bytes)",
+                    file.FileName,
+                    file.ContentType,
+                    file.Length);
+
                 if (file.Length > 5 * 1024 * 1024) // 5MB per image
                 {
                     return BadRequest(new { Message = $"Image {file.FileName} is too large. Maximum size is 5MB per image." });
                 }
 
-                if (!file.ContentType.StartsWith("image/"))
+                if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 {
                     return BadRequest(new { Message = $"File {file.FileName} is not a valid image." });
                 }
@@ -94,14 +130,26 @@ public class ReviewsController : ControllerBase
 
                 imageUrls.Add(uploadResult.Url);
             }
-        }
 
-        review.Images = imageUrls.Count > 0 ? JsonSerializer.Serialize(imageUrls) : string.Empty;
+            review.Images = JsonSerializer.Serialize(imageUrls);
+        }
 
         await _context.SaveChangesAsync();
         await UpdateProductRating(productId);
 
-        return Ok(new { Message = "Review saved." });
+        return Ok(new
+        {
+            Message = "Review saved.",
+            Review = new
+            {
+                review.Id,
+                review.Rating,
+                review.Comment,
+                review.CreatedAt,
+                Username = review.User?.Username ?? User.Identity?.Name ?? "Customer",
+                Images = DeserializeReviewImages(review.Images)
+            }
+        });
     }
 
     private async Task UpdateProductRating(string productId)
@@ -117,6 +165,23 @@ public class ReviewsController : ControllerBase
         product.AverageRating = reviews.Count == 0 ? 0 : Math.Round((decimal)reviews.Average(r => r.Rating), 1);
 
         await _context.SaveChangesAsync();
+    }
+
+    private static string[] DeserializeReviewImages(string? images)
+    {
+        if (string.IsNullOrWhiteSpace(images))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(images) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 }
 
