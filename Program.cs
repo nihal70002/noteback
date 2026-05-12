@@ -89,10 +89,14 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+            ?? new[] { "https://www.papercues.in", "http://localhost:5173", "http://localhost:3000" };
+        
         policy
-            .AllowAnyOrigin() // Temporary debug mode to fix CORS
+            .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -139,6 +143,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseRouting();
+
+// Add CORS middleware before authentication
 app.UseCors("AllowFrontend");
 
 // app.UseHttpsRedirection();
