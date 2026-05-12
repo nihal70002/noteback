@@ -37,7 +37,7 @@ public class ReviewsController : ControllerBase
                 r.Rating,
                 r.Comment,
                 r.CreatedAt,
-                Username = r.User != null ? r.User.Username : "Customer",
+                Username = r.User != null ? r.User.PhoneNumber : "Customer",
                 r.Images
             })
             .ToListAsync();
@@ -146,7 +146,7 @@ public class ReviewsController : ControllerBase
                 review.Rating,
                 review.Comment,
                 review.CreatedAt,
-                Username = review.User?.Username ?? User.Identity?.Name ?? "Customer",
+                Username = review.User?.PhoneNumber ?? User.Identity?.Name ?? "Customer",
                 Images = DeserializeReviewImages(review.Images)
             }
         });

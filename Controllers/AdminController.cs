@@ -198,8 +198,7 @@ public class AdminController : ControllerBase
         {
             var normalizedSearch = search.Trim().ToLower();
             query = query.Where(u =>
-                u.Username.ToLower().Contains(normalizedSearch) ||
-                u.Email.ToLower().Contains(normalizedSearch));
+                u.PhoneNumber.ToLower().Contains(normalizedSearch));
         }
 
         if (!string.IsNullOrWhiteSpace(role) && role != "All")
@@ -215,8 +214,7 @@ public class AdminController : ControllerBase
                 (user, orders) => new
                 {
                     user.Id,
-                    user.Username,
-                    user.Email,
+                    user.PhoneNumber,
                     user.Role,
                     user.IsBlocked,
                     OrderCount = orders.Count(),
@@ -224,7 +222,7 @@ public class AdminController : ControllerBase
                     LastOrderDate = orders.Max(o => (DateTime?)o.OrderDate)
                 })
             .OrderByDescending(u => u.LastOrderDate ?? DateTime.MinValue)
-            .ThenBy(u => u.Username)
+            .ThenBy(u => u.PhoneNumber)
             .ToListAsync();
 
         return Ok(users);

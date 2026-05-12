@@ -31,8 +31,7 @@ public class NoteDbContext : DbContext
             new User 
             { 
                 Id = "admin-user-id", 
-                Username = "Admin", 
-                Email = "admin@note.com", 
+                PhoneNumber = "admin@note.com", 
                 PasswordHash = "$2a$11$H4Gu44Jwzu4Nx8EClozYu.dczwh4JWiDDtkMmdutbdprmG/f9hMBe",
                 Role = "Admin"
             }

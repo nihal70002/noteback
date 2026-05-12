@@ -21,16 +21,16 @@ public class AuthService : IAuthService
         _emailService = emailService;
     }
 
-    public async Task<string> RegisterAsync(string phoneNumber, string password, string role = "User")
+    public async Task<string> RegisterAsync(string username, string email, string password, string role = "User")
     {
-        if (await _context.Users.AnyAsync(u => u.PhoneNumber == phoneNumber))
+        if (await _context.Users.AnyAsync(u => u.PhoneNumber == email))
         {
             return "Phone number already exists";
         }
 
         var user = new User
         {
-            PhoneNumber = phoneNumber,
+            PhoneNumber = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Role = role
         };
