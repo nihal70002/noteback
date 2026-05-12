@@ -89,14 +89,17 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
-            ?? new[] { "https://www.papercues.in", "http://localhost:5173", "http://localhost:3000" };
-        
         policy
-            .WithOrigins(allowedOrigins)
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
+            .WithOrigins(
+                "https://www.papercues.in",
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "https://papercues.in"
+            )
+            .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+            .WithHeaders("Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With")
+            .AllowCredentials()
+            .SetPreflightMaxAge(TimeSpan.FromDays(1));
     });
 });
 
@@ -142,13 +145,19 @@ using (var scope = app.Services.CreateScope())
     """);
 }
 
-app.UseRouting();
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
-// Add CORS middleware before authentication
+app.UseHttpsRedirection();
+
+// CORS must be called before UseRouting and UseAuthentication
 app.UseCors("AllowFrontend");
 
-// app.UseHttpsRedirection();
-
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
