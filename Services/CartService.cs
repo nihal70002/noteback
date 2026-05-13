@@ -137,7 +137,32 @@ public class CartService : ICartService
 
     public async Task<(Cart? Cart, string? Error)> ReplaceWithComboAsync(string cartId, string comboProductId, List<string>? selectedChoices = null)
     {
-        // Clear all existing items in the cart
+        var comboProduct = await _context.Products.FindAsync(comboProductId);
+        if (comboProduct == null) return (null, "Combo product not found.");
+        if (comboProduct.Stock <= 0) return (null, "This combo is out of stock.");
+
+        if (selectedChoices is { Count: > 0 })
+        {
+            var validChoiceIds = await _context.PackChoices
+                .Where(pc => pc.PackProductId == comboProductId)
+                .Select(pc => pc.ChoiceProductId)
+                .ToListAsync();
+
+            foreach (var choiceId in selectedChoices)
+            {
+                if (!validChoiceIds.Contains(choiceId))
+                {
+                    return (null, "One or more selected pack items are invalid.");
+                }
+
+                var choiceProduct = await _context.Products.FindAsync(choiceId);
+                if (choiceProduct == null || choiceProduct.Stock <= 0)
+                {
+                    return (null, $"Selected item '{choiceProduct?.Name ?? choiceId}' is out of stock.");
+                }
+            }
+        }
+
         var cart = await _context.Carts
             .Include(c => c.Items)
             .FirstOrDefaultAsync(c => c.Id == cartId);
@@ -148,17 +173,19 @@ public class CartService : ICartService
             _context.Carts.Add(cart);
         }
 
-        // Remove all existing items
         _context.CartItems.RemoveRange(cart.Items);
 
-        // Add the combo product
-        var (result, error) = await AddItemToCartAsync(cartId, comboProductId, 1, selectedChoices);
-        
-        if (error != null)
+        cart.Items.Add(new CartItem
         {
-            return (null, error);
-        }
+            ProductId = comboProductId,
+            Quantity = 1,
+            SelectedChoicesJson = selectedChoices is { Count: > 0 }
+                ? System.Text.Json.JsonSerializer.Serialize(selectedChoices)
+                : null
+        });
 
-        return (result, null);
+        await _context.SaveChangesAsync();
+
+        return (await GetCartAsync(cartId), null);
     }
 }

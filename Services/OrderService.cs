@@ -279,7 +279,7 @@ public class OrderService : IOrderService
             }
         }
 
-        var subtotal = cart.Items.Sum(i => i.Quantity * (i.Product?.Price ?? 0));
+        var subtotal = cart.Items.Sum(i => i.Quantity * GetEffectiveProductPrice(i.Product));
         var couponCode = rawCouponCode?.Trim().ToUpper();
         var discountAmount = 0m;
 
@@ -377,7 +377,7 @@ public class OrderService : IOrderService
             {
                 ProductId = i.ProductId,
                 Quantity = i.Quantity,
-                Price = i.Product?.Price ?? 0,
+                Price = GetEffectiveProductPrice(i.Product),
                 SelectedChoicesJson = i.SelectedChoicesJson
             }).ToList()
         };
@@ -448,6 +448,18 @@ public class OrderService : IOrderService
         return string.IsNullOrEmpty(keyId) || string.IsNullOrEmpty(keySecret)
             ? null
             : (keyId, keySecret);
+    }
+
+    private static decimal GetEffectiveProductPrice(Product? product)
+    {
+        if (product == null)
+        {
+            return 0;
+        }
+
+        return product.IsPack || product.Name.Contains("combo", StringComparison.OrdinalIgnoreCase)
+            ? 499m
+            : product.Price;
     }
 
     private async Task SendOrderWhatsAppNotificationsAsync(Order order, decimal totalAmount)

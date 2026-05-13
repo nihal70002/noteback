@@ -23,6 +23,13 @@ namespace Note.Backend.Migrations
                 WHERE "RazorpayPaymentId" IS NOT NULL;
             """);
 
+            migrationBuilder.Sql("""
+                UPDATE "Products"
+                SET "Price" = 499
+                WHERE ("IsPack" = TRUE OR "Name" ILIKE '%combo%')
+                  AND "Price" = 529;
+            """);
+
             migrationBuilder.CreateIndex(
                 name: "IX_Orders_RazorpayPaymentId",
                 table: "Orders",
