@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Note.Backend.Data;
 using Note.Backend.Models;
+using System.Text.RegularExpressions;
 
 namespace Note.Backend.Services;
 
@@ -47,6 +48,14 @@ public class ProductService : IProductService
     public async Task<Product?> GetProductByIdAsync(string id)
     {
         return await _context.Products.FindAsync(id);
+    }
+
+    public async Task<Product?> GetProductBySlugAsync(string slug)
+    {
+        var normalizedSlug = BuildSeoSlug(slug);
+        var products = await _context.Products.AsNoTracking().ToListAsync();
+
+        return products.FirstOrDefault(product => BuildSeoSlug(product.Name) == normalizedSlug);
     }
 
     public async Task<Product> CreateProductAsync(Product product)
@@ -101,5 +110,19 @@ public class ProductService : IProductService
             .Where(p => p != null)
             .Cast<Product>()
             .ToListAsync();
+    }
+
+    private static string BuildSeoSlug(string? value)
+    {
+        var slug = Regex.Replace((value ?? string.Empty).ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
+
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            slug = "papercues";
+        }
+
+        return slug.Contains("notebook") || slug.Contains("journal") || slug.Contains("diary")
+            ? slug
+            : $"{slug}-aesthetic-notebook";
     }
 }

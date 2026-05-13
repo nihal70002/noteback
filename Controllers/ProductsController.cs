@@ -35,6 +35,14 @@ public class ProductsController : ControllerBase
         return Ok(product);
     }
 
+    [HttpGet("slug/{slug}")]
+    public async Task<ActionResult<Product>> GetProductBySlug(string slug)
+    {
+        var product = await _productService.GetProductBySlugAsync(slug);
+        if (product == null) return NotFound();
+        return Ok(product);
+    }
+
     [Authorize(Roles = "Admin")]
     [HttpPost]
     public async Task<ActionResult<Product>> CreateProduct(Product product)
