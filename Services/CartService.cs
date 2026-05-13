@@ -134,4 +134,31 @@ public class CartService : ICartService
 
         return await GetCartAsync(cartId);
     }
+
+    public async Task<(Cart? Cart, string? Error)> ReplaceWithComboAsync(string cartId, string comboProductId, List<string>? selectedChoices = null)
+    {
+        // Clear all existing items in the cart
+        var cart = await _context.Carts
+            .Include(c => c.Items)
+            .FirstOrDefaultAsync(c => c.Id == cartId);
+
+        if (cart == null)
+        {
+            cart = new Cart { Id = cartId };
+            _context.Carts.Add(cart);
+        }
+
+        // Remove all existing items
+        _context.CartItems.RemoveRange(cart.Items);
+
+        // Add the combo product
+        var (result, error) = await AddItemToCartAsync(cartId, comboProductId, 1, selectedChoices);
+        
+        if (error != null)
+        {
+            return (null, error);
+        }
+
+        return (result, null);
+    }
 }
