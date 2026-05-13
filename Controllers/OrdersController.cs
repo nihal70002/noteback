@@ -12,10 +12,12 @@ namespace Note.Backend.Controllers;
 public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orderService;
+    private readonly ILogger<OrdersController> _logger;
 
-    public OrdersController(IOrderService orderService)
+    public OrdersController(IOrderService orderService, ILogger<OrdersController> logger)
     {
         _orderService = orderService;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -52,23 +54,37 @@ public class OrdersController : ControllerBase
     [HttpPost("verify-payment")]
     public async Task<IActionResult> VerifyPayment([FromBody] VerifyPaymentRequest request)
     {
+        _logger.LogInformation("[VERIFY-PAYMENT-ENDPOINT] Received request - CartId: {CartId}, PaymentId: {PaymentId}", 
+            request.CartId, request.RazorpayPaymentId);
+
         if (string.IsNullOrEmpty(request.CartId) ||
             string.IsNullOrEmpty(request.RazorpayPaymentId) || 
             string.IsNullOrEmpty(request.RazorpayOrderId) || 
             string.IsNullOrEmpty(request.RazorpaySignature))
         {
+            _logger.LogWarning("[VERIFY-PAYMENT-ENDPOINT] Missing payment details");
             return BadRequest(new { Message = "Missing payment details" });
         }
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[VERIFY-PAYMENT-ENDPOINT] User not authenticated");
+            return Unauthorized();
+        }
+
+        _logger.LogInformation("[VERIFY-PAYMENT-ENDPOINT] User authenticated - UserId: {UserId}", userId);
 
         var result = await _orderService.VerifyPaymentAsync(userId, request);
         
         if (!result.Success)
         {
+            _logger.LogError("[VERIFY-PAYMENT-ENDPOINT] Verification failed - Error: {Error}", result.Error);
             return BadRequest(new { Message = result.Error ?? "Payment verification failed" });
         }
+
+        _logger.LogInformation("[VERIFY-PAYMENT-ENDPOINT] Payment verified successfully - OrderId: {OrderId}, UserId: {UserId}", 
+            result.Order?.Id, userId);
 
         return Ok(new
         {
@@ -76,6 +92,7 @@ public class OrdersController : ControllerBase
             OrderId = result.Order?.Id
         });
     }
+
     [HttpGet("all")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetAllOrders()
