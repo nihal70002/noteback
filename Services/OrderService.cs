@@ -20,12 +20,12 @@ public class OrderService : IOrderService
         NoteDbContext context,
         IConfiguration configuration,
         IWhatsAppService whatsAppService,
-        ILogger<OrderService> logger)
+        ILogger<OrderService> _logger)
     {
         _context = context;
         _configuration = configuration;
         _whatsAppService = whatsAppService;
-        _logger = logger;
+        this._logger = _logger;
     }
 
     public async Task<(string? RazorpayOrderId, decimal Amount, string? Error)> CheckoutAsync(string cartId, string userId, ShippingDetails shippingDetails)
@@ -158,6 +158,10 @@ public class OrderService : IOrderService
 
     public async Task<VerifyPaymentResult> VerifyPaymentAsync(string userId, VerifyPaymentRequest request)
     {
+        _logger.LogInformation("[VERIFY-PAYMENT] Incoming request - UserId: {UserId}, CartId: {CartId}, PaymentId: {PaymentId}", 
+            userId, request.CartId, request.RazorpayPaymentId);
+
+        // Check for existing order with this payment ID
         var existingOrder = await _context.Orders
             .Include(o => o.Items)
             .ThenInclude(i => i.Product)
@@ -165,73 +169,122 @@ public class OrderService : IOrderService
 
         if (existingOrder != null)
         {
+            _logger.LogInformation("[VERIFY-PAYMENT] Existing order found - OrderId: {OrderId}, UserId: {UserId}, ExistingUserId: {ExistingUserId}", 
+                existingOrder.Id, userId, existingOrder.UserId);
+            
             return existingOrder.UserId == userId
                 ? new VerifyPaymentResult(true, existingOrder)
                 : new VerifyPaymentResult(false, Error: "Payment has already been used.");
         }
 
+        // Validate signature
         if (!IsValidRazorpaySignature(request.RazorpayOrderId, request.RazorpayPaymentId, request.RazorpaySignature))
         {
+            _logger.LogWarning("[VERIFY-PAYMENT] Invalid signature - OrderId: {OrderId}, PaymentId: {PaymentId}", 
+                request.RazorpayOrderId, request.RazorpayPaymentId);
             return new VerifyPaymentResult(false, Error: "Payment verification failed.");
         }
 
+        // Validate shipping details
         if (request.ShippingDetails is null)
         {
+            _logger.LogWarning("[VERIFY-PAYMENT] Missing shipping details - CartId: {CartId}", request.CartId);
             return new VerifyPaymentResult(false, Error: "Shipping details are required.");
         }
 
         var validationError = ValidateShippingDetails(request.ShippingDetails);
         if (validationError != null)
         {
+            _logger.LogWarning("[VERIFY-PAYMENT] Invalid shipping details - CartId: {CartId}, Error: {Error}", 
+                request.CartId, validationError);
             return new VerifyPaymentResult(false, Error: validationError);
         }
 
+        // Validate cart ID
         if (string.IsNullOrWhiteSpace(request.CartId))
         {
+            _logger.LogWarning("[VERIFY-PAYMENT] Cart ID is null or empty");
             return new VerifyPaymentResult(false, Error: "Cart is required.");
         }
 
+        // Fetch and validate cart
+        _logger.LogInformation("[VERIFY-PAYMENT] Looking up cart - CartId: {CartId}", request.CartId);
         var cart = await GetCartAsync(request.CartId);
-        if (cart == null || !cart.Items.Any())
+        
+        if (cart == null)
         {
-            return new VerifyPaymentResult(false, Error: "Cart is empty or not found.");
+            _logger.LogError("[VERIFY-PAYMENT] Cart not found - CartId: {CartId}, UserId: {UserId}", 
+                request.CartId, userId);
+            return new VerifyPaymentResult(false, Error: "Cart not found.");
         }
 
+        if (!cart.Items.Any())
+        {
+            _logger.LogError("[VERIFY-PAYMENT] Cart is empty - CartId: {CartId}, UserId: {UserId}", 
+                request.CartId, userId);
+            return new VerifyPaymentResult(false, Error: "Cart is empty.");
+        }
+
+        _logger.LogInformation("[VERIFY-PAYMENT] Cart loaded successfully - CartId: {CartId}, ItemCount: {ItemCount}", 
+            request.CartId, cart.Items.Count);
+
+        // Calculate pricing
         var pricing = await CalculateCartPricingAsync(cart, request.ShippingDetails.CouponCode);
         if (pricing.Error != null)
         {
+            _logger.LogWarning("[VERIFY-PAYMENT] Pricing calculation failed - CartId: {CartId}, Error: {Error}", 
+                request.CartId, pricing.Error);
             return new VerifyPaymentResult(false, Error: pricing.Error);
         }
 
+        // Validate amount
         var amountInPaise = (int)Math.Round(pricing.TotalAmount * 100);
         var razorpayOrderValid = await ValidateRazorpayOrderAsync(request.RazorpayOrderId, amountInPaise);
         if (!razorpayOrderValid)
         {
+            _logger.LogError("[VERIFY-PAYMENT] Razorpay amount mismatch - OrderId: {OrderId}, ExpectedAmount: {ExpectedAmount}", 
+                request.RazorpayOrderId, amountInPaise);
             return new VerifyPaymentResult(false, Error: "Payment amount verification failed.");
         }
 
+        // Build order
         var order = BuildPaidOrder(userId, request, cart, pricing);
+        _logger.LogInformation("[VERIFY-PAYMENT] Order object created - UserId: {UserId}, TotalAmount: {TotalAmount}", 
+            userId, pricing.TotalAmount);
 
         try
         {
+            // Add order to database
             _context.Orders.Add(order);
+            _logger.LogInformation("[VERIFY-PAYMENT] Order added to context - Order will be saved");
 
+            // Update stock
             foreach (var item in cart.Items)
             {
                 if (item.Product != null)
                 {
                     item.Product.Stock -= item.Quantity;
+                    _logger.LogInformation("[VERIFY-PAYMENT] Stock updated - ProductId: {ProductId}, NewStock: {NewStock}", 
+                        item.ProductId, item.Product.Stock);
                 }
             }
 
+            // Remove cart
             _context.Carts.Remove(cart);
+            _logger.LogInformation("[VERIFY-PAYMENT] Cart marked for deletion - CartId: {CartId}", request.CartId);
+
+            // CRITICAL: Save all changes to database
             await _context.SaveChangesAsync();
+            _logger.LogInformation("[VERIFY-PAYMENT] SaveChangesAsync executed successfully - OrderId: {OrderId}, CartId: {CartId}", 
+                order.Id, request.CartId);
         }
         catch (DbUpdateException ex)
         {
-            _logger.LogWarning(ex, "Could not save order for Razorpay payment {PaymentId}", request.RazorpayPaymentId);
+            _logger.LogError(ex, "[VERIFY-PAYMENT] Database error during SaveChangesAsync - CartId: {CartId}, PaymentId: {PaymentId}, Error: {ErrorMessage}", 
+                request.CartId, request.RazorpayPaymentId, ex.Message);
             _context.ChangeTracker.Clear();
 
+            // Check for duplicate order
             var duplicateOrder = await _context.Orders
                 .Include(o => o.Items)
                 .ThenInclude(i => i.Product)
@@ -239,15 +292,35 @@ public class OrderService : IOrderService
 
             if (duplicateOrder != null && duplicateOrder.UserId == userId)
             {
+                _logger.LogInformation("[VERIFY-PAYMENT] Duplicate order detected and matched - OrderId: {OrderId}", 
+                    duplicateOrder.Id);
                 return new VerifyPaymentResult(true, duplicateOrder);
             }
 
             return new VerifyPaymentResult(false, Error: "Could not create order for this payment.");
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[VERIFY-PAYMENT] Unexpected error - CartId: {CartId}, PaymentId: {PaymentId}, Error: {ErrorMessage}", 
+                request.CartId, request.RazorpayPaymentId, ex.Message);
+            return new VerifyPaymentResult(false, Error: $"Server error: {ex.Message}");
+        }
 
-        await SendOrderWhatsAppNotificationsAsync(order, pricing.TotalAmount);
-        await SendAdminPaymentVerifiedWhatsAppAsync(order);
+        // Send notifications
+        try
+        {
+            await SendOrderWhatsAppNotificationsAsync(order, pricing.TotalAmount);
+            await SendAdminPaymentVerifiedWhatsAppAsync(order);
+            _logger.LogInformation("[VERIFY-PAYMENT] Notifications sent - OrderId: {OrderId}", order.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[VERIFY-PAYMENT] Notification error (non-blocking) - OrderId: {OrderId}", order.Id);
+        }
 
+        _logger.LogInformation("[VERIFY-PAYMENT] SUCCESS - Order created - OrderId: {OrderId}, UserId: {UserId}, CartId: {CartId}, Amount: {Amount}", 
+            order.Id, userId, request.CartId, pricing.TotalAmount);
+        
         return new VerifyPaymentResult(true, order);
     }
 
