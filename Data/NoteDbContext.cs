@@ -33,7 +33,8 @@ public class NoteDbContext : DbContext
                 Id = "admin-user-id", 
                 PhoneNumber = "admin@note.com", 
                 PasswordHash = "$2a$11$H4Gu44Jwzu4Nx8EClozYu.dczwh4JWiDDtkMmdutbdprmG/f9hMBe",
-                Role = "Admin"
+                Role = "Admin",
+                CreatedAt = new DateTime(2026, 5, 12, 19, 51, 56, 366, DateTimeKind.Utc).AddTicks(5583)
             }
         );
 
@@ -46,6 +47,11 @@ public class NoteDbContext : DbContext
         modelBuilder.Entity<ProductReview>()
             .HasIndex(r => new { r.UserId, r.ProductId })
             .IsUnique();
+
+        modelBuilder.Entity<Order>()
+            .HasIndex(o => o.RazorpayPaymentId)
+            .IsUnique()
+            .HasFilter("\"RazorpayPaymentId\" IS NOT NULL");
 
         modelBuilder.Entity<PackChoice>()
             .HasOne(pc => pc.PackProduct)

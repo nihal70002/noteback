@@ -14,7 +14,7 @@ public class OrderService : IOrderService
     private readonly IConfiguration _configuration;
     private readonly IWhatsAppService _whatsAppService;
     private readonly ILogger<OrderService> _logger;
-    private static readonly HttpClient _httpClient = new HttpClient();
+    private static readonly HttpClient _httpClient = new();
 
     public OrderService(
         NoteDbContext context,
@@ -28,141 +28,47 @@ public class OrderService : IOrderService
         _logger = logger;
     }
 
-    public async Task<(string? OrderId, string? RazorpayOrderId, decimal Amount, string? Error)> CheckoutAsync(string cartId, string userId, ShippingDetails shippingDetails)
+    public async Task<(string? RazorpayOrderId, decimal Amount, string? Error)> CheckoutAsync(string cartId, string userId, ShippingDetails shippingDetails)
     {
-        if (string.IsNullOrWhiteSpace(shippingDetails.FullName) ||
-            string.IsNullOrWhiteSpace(shippingDetails.PhoneNumber) ||
-            string.IsNullOrWhiteSpace(shippingDetails.AddressLine1) ||
-            string.IsNullOrWhiteSpace(shippingDetails.City) ||
-            string.IsNullOrWhiteSpace(shippingDetails.State) ||
-            string.IsNullOrWhiteSpace(shippingDetails.Pincode))
+        var validationError = ValidateShippingDetails(shippingDetails);
+        if (validationError != null)
         {
-            return (null, null, 0, "Please fill all required shipping fields.");
+            return (null, 0, validationError);
         }
 
-        var primaryPhone = shippingDetails.PhoneNumber.Trim();
-        if (primaryPhone.Length < 10 || primaryPhone.Length > 15)
-        {
-            return (null, null, 0, "Primary phone number is invalid.");
-        }
-
-        var fullAddress = string.Join(", ", new[]
-        {
-            shippingDetails.AddressLine1?.Trim(),
-            shippingDetails.AddressLine2?.Trim(),
-            shippingDetails.City?.Trim(),
-            shippingDetails.State?.Trim(),
-            shippingDetails.Pincode?.Trim()
-        }.Where(part => !string.IsNullOrWhiteSpace(part)));
-
-        var cart = await _context.Carts
-            .Include(c => c.Items)
-            .ThenInclude(i => i.Product)
-            .FirstOrDefaultAsync(c => c.Id == cartId);
-
+        var cart = await GetCartAsync(cartId);
         if (cart == null || !cart.Items.Any())
         {
-            return (null, null, 0, "Cart is empty or not found.");
+            return (null, 0, "Cart is empty or not found.");
         }
 
-        foreach (var item in cart.Items)
+        var pricing = await CalculateCartPricingAsync(cart, shippingDetails.CouponCode);
+        if (pricing.Error != null)
         {
-            if (item.Product == null)
-            {
-                return (null, null, 0, "A product in your cart is no longer available.");
-            }
-
-            if (item.Quantity > item.Product.Stock)
-            {
-                return (null, null, 0, $"Only {item.Product.Stock} item(s) available for {item.Product.Name}.");
-            }
+            return (null, 0, pricing.Error);
         }
 
-        var subtotal = cart.Items.Sum(i => i.Quantity * (i.Product?.Price ?? 0));
-        var couponCode = shippingDetails.CouponCode?.Trim().ToUpper();
-        var discountAmount = 0m;
-
-        if (!string.IsNullOrWhiteSpace(couponCode))
-        {
-            var coupon = await _context.Coupons.FirstOrDefaultAsync(c => c.Code == couponCode && c.IsActive);
-            if (coupon == null)
-            {
-                return (null, null, 0, "Coupon code is invalid.");
-            }
-
-            discountAmount = Math.Round(subtotal * (coupon.DiscountPercent / 100m), 2);
-        }
-
-        // Get shipping settings from database
-        var shippingSettings = await _context.ShippingSettings
-            .OrderByDescending(s => s.Id)
-            .FirstOrDefaultAsync();
-
-        if (shippingSettings == null || !shippingSettings.Enabled)
-        {
-            shippingSettings = new ShippingSettings();
-        }
-
-        decimal shippingFee;
-        if (shippingSettings.FreeShippingType == "amount")
-        {
-            shippingFee = subtotal - discountAmount >= shippingSettings.FreeShippingAmount ? 0m : shippingSettings.StandardShippingFee;
-        }
-        else
-        {
-            var totalItems = cart.Items.Sum(i => i.Quantity);
-            shippingFee = totalItems >= shippingSettings.FreeShippingThreshold ? 0m : shippingSettings.StandardShippingFee;
-        }
-        var totalAmount = subtotal - discountAmount + shippingFee;
-
-        var order = new Order
-        {
-            UserId = userId,
-            OrderDate = DateTime.UtcNow,
-            Subtotal = subtotal,
-            DiscountAmount = discountAmount,
-            ShippingFee = shippingFee,
-            CouponCode = couponCode,
-            TotalAmount = totalAmount,
-            FullName = (shippingDetails.FullName ?? string.Empty).Trim(),
-            PhoneNumber = primaryPhone,
-            AlternatePhoneNumber = shippingDetails.AlternatePhoneNumber?.Trim() ?? string.Empty,
-            AddressLine1 = (shippingDetails.AddressLine1 ?? string.Empty).Trim(),
-            AddressLine2 = shippingDetails.AddressLine2?.Trim() ?? string.Empty,
-            City = (shippingDetails.City ?? string.Empty).Trim(),
-            State = (shippingDetails.State ?? string.Empty).Trim(),
-            DeliveryAddress = string.IsNullOrWhiteSpace(shippingDetails.DeliveryAddress)
-                ? fullAddress
-                : shippingDetails.DeliveryAddress.Trim(),
-            Landmark = shippingDetails.Landmark?.Trim() ?? string.Empty,
-            Pincode = (shippingDetails.Pincode ?? string.Empty).Trim(),
-            Items = cart.Items.Select(i => new OrderItem
-            {
-                ProductId = i.ProductId,
-                Quantity = i.Quantity,
-                Price = i.Product?.Price ?? 0,
-                SelectedChoicesJson = i.SelectedChoicesJson
-            }).ToList()
-        };
-
-        // Razorpay API Call
-        var keyId = (_configuration["RAZORPAY_KEY_ID"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_ID"))?.Trim();
-        var keySecret = (_configuration["RAZORPAY_KEY_SECRET"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_SECRET"))?.Trim();
-
-        if (string.IsNullOrEmpty(keyId) || string.IsNullOrEmpty(keySecret))
-        {
-            return (null, null, 0, "Payment gateway configuration is missing.");
-        }
-
-        var amountInPaise = (int)Math.Round(totalAmount * 100);
+        var amountInPaise = (int)Math.Round(pricing.TotalAmount * 100);
         if (amountInPaise < 100)
         {
-            return (null, null, 0, "Amount must be at least ₹1.00");
+            return (null, 0, "Amount must be at least INR 1.00");
+        }
+
+        var credentials = GetRazorpayCredentials();
+        if (credentials == null)
+        {
+            return (null, 0, "Payment gateway configuration is missing.");
         }
 
         try
         {
-            var authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{keyId}:{keySecret}"));
+            var authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{credentials.Value.KeyId}:{credentials.Value.KeySecret}"));
+            var receipt = $"cart_{cartId}_{Guid.NewGuid():N}";
+            if (receipt.Length > 40)
+            {
+                receipt = receipt[..40];
+            }
+
             var request = new HttpRequestMessage(HttpMethod.Post, "https://api.razorpay.com/v1/orders")
             {
                 Headers = { Authorization = new AuthenticationHeaderValue("Basic", authHeader) },
@@ -170,7 +76,12 @@ public class OrderService : IOrderService
                 {
                     amount = amountInPaise,
                     currency = "INR",
-                    receipt = Guid.NewGuid().ToString()
+                    receipt,
+                    notes = new
+                    {
+                        cartId,
+                        userId
+                    }
                 }), Encoding.UTF8, "application/json")
             };
 
@@ -178,99 +89,25 @@ public class OrderService : IOrderService
             if (!response.IsSuccessStatusCode)
             {
                 var err = await response.Content.ReadAsStringAsync();
-                return (null, null, 0, $"Failed to create payment order: {err}");
+                return (null, 0, $"Failed to create payment order: {err}");
             }
 
             var responseBody = await response.Content.ReadAsStringAsync();
             var razorpayData = JsonSerializer.Deserialize<JsonElement>(responseBody);
             var razorpayOrderId = razorpayData.GetProperty("id").GetString();
-            
-            order.RazorpayOrderId = razorpayOrderId;
 
-            _context.Orders.Add(order);
-
-            foreach (var item in cart.Items)
-            {
-                if (item.Product != null)
-                {
-                    item.Product.Stock -= item.Quantity;
-                }
-            }
-            
-            // Clear the cart
-            _context.Carts.Remove(cart);
-            
-            await _context.SaveChangesAsync();
-
-            await SendOrderWhatsAppNotificationsAsync(order, totalAmount);
-
-            return (order.Id.ToString(), razorpayOrderId, totalAmount, null);
-        }
-        catch (DbUpdateException dbEx)
-        {
-            return (null, null, 0, $"Database Error: {dbEx.InnerException?.Message ?? dbEx.Message}");
+            return (razorpayOrderId, pricing.TotalAmount, null);
         }
         catch (Exception ex)
         {
-            return (null, null, 0, $"Server Error: {ex.Message}");
-        }
-    }
-
-    private async Task SendOrderWhatsAppNotificationsAsync(Order order, decimal totalAmount)
-    {
-        try
-        {
-            var adminPhone = (_configuration["ADMIN_WHATSAPP_PHONE"]
-                ?? Environment.GetEnvironmentVariable("ADMIN_WHATSAPP_PHONE")
-                ?? Environment.GetEnvironmentVariable("WHATSAPP_ADMIN_PHONE"))?.Trim();
-
-            var itemSummary = string.Join(", ", order.Items.Select(item => $"{item.ProductId} x {item.Quantity}"));
-            var adminMessage =
-                $"New order received on Papercues.\n" +
-                $"Order ID: #{order.Id}\n" +
-                $"Customer: {order.FullName}\n" +
-                $"Phone: {order.PhoneNumber}\n" +
-                $"Amount: ₹{totalAmount:F2}\n" +
-                $"Items: {itemSummary}\n" +
-                $"Address: {order.DeliveryAddress}";
-
-            if (!string.IsNullOrWhiteSpace(adminPhone))
-            {
-                var adminResult = await _whatsAppService.SendMessageAsync(adminPhone, adminMessage);
-                if (!adminResult.Success)
-                {
-                    _logger.LogError("Admin WhatsApp notification failed for order {OrderId}: {Error}", order.Id, adminResult.ErrorMessage);
-                }
-            }
-            else
-            {
-                _logger.LogWarning("Admin WhatsApp notification skipped for order {OrderId}: ADMIN_WHATSAPP_PHONE is not configured.", order.Id);
-            }
-
-            if (!string.IsNullOrWhiteSpace(order.PhoneNumber))
-            {
-                var customerMessage =
-                    $"Hi {order.FullName}, your Papercues order #{order.Id} has been placed successfully.\n" +
-                    $"Amount: ₹{totalAmount:F2}\n" +
-                    $"We will notify you when your order is processed.";
-
-                var customerResult = await _whatsAppService.SendMessageAsync(order.PhoneNumber, customerMessage);
-                if (!customerResult.Success)
-                {
-                    _logger.LogError("Customer WhatsApp notification failed for order {OrderId}: {Error}", order.Id, customerResult.ErrorMessage);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "WhatsApp notification flow failed for order {OrderId}. Order creation was not affected.", order.Id);
+            return (null, 0, $"Server Error: {ex.Message}");
         }
     }
 
     public async Task<IEnumerable<Order>> GetUserOrdersAsync(string userId)
     {
         return await _context.Orders
-            .Where(o => o.UserId == userId)
+            .Where(o => o.UserId == userId && o.PaymentStatus == "Paid")
             .Include(o => o.Items)
             .ThenInclude(i => i.Product)
             .OrderByDescending(o => o.OrderDate)
@@ -280,6 +117,7 @@ public class OrderService : IOrderService
     public async Task<IEnumerable<Order>> GetAllOrdersAsync()
     {
         return await _context.Orders
+            .Where(o => o.PaymentStatus == "Paid")
             .Include(o => o.Items)
             .ThenInclude(i => i.Product)
             .OrderByDescending(o => o.OrderDate)
@@ -301,7 +139,7 @@ public class OrderService : IOrderService
         var order = await _context.Orders
             .Include(o => o.Items)
             .ThenInclude(i => i.Product)
-            .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId);
+            .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId && o.PaymentStatus == "Paid");
 
         if (order == null || order.Status != "Pending") return false;
 
@@ -318,37 +156,349 @@ public class OrderService : IOrderService
         return true;
     }
 
-    public async Task<bool> VerifyPaymentAsync(int orderId, string paymentId, string signature)
+    public async Task<VerifyPaymentResult> VerifyPaymentAsync(string userId, VerifyPaymentRequest request)
     {
-        var order = await _context.Orders.FindAsync(orderId);
-        if (order == null || string.IsNullOrEmpty(order.RazorpayOrderId))
-            return false;
+        var existingOrder = await _context.Orders
+            .Include(o => o.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(o => o.RazorpayPaymentId == request.RazorpayPaymentId);
 
-        var keySecret = _configuration["RAZORPAY_KEY_SECRET"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_SECRET");
-        if (string.IsNullOrEmpty(keySecret))
-            return false;
-
-        var payload = $"{order.RazorpayOrderId}|{paymentId}";
-        var secretBytes = Encoding.UTF8.GetBytes(keySecret);
-        var payloadBytes = Encoding.UTF8.GetBytes(payload);
-
-        using (var hmac = new HMACSHA256(secretBytes))
+        if (existingOrder != null)
         {
-            byte[] hash = hmac.ComputeHash(payloadBytes);
-            string expectedSignature = BitConverter.ToString(hash).Replace("-", "").ToLower();
+            return existingOrder.UserId == userId
+                ? new VerifyPaymentResult(true, existingOrder)
+                : new VerifyPaymentResult(false, Error: "Payment has already been used.");
+        }
 
-            if (expectedSignature == signature)
+        if (!IsValidRazorpaySignature(request.RazorpayOrderId, request.RazorpayPaymentId, request.RazorpaySignature))
+        {
+            return new VerifyPaymentResult(false, Error: "Payment verification failed.");
+        }
+
+        if (request.ShippingDetails is null)
+        {
+            return new VerifyPaymentResult(false, Error: "Shipping details are required.");
+        }
+
+        var validationError = ValidateShippingDetails(request.ShippingDetails);
+        if (validationError != null)
+        {
+            return new VerifyPaymentResult(false, Error: validationError);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.CartId))
+        {
+            return new VerifyPaymentResult(false, Error: "Cart is required.");
+        }
+
+        var cart = await GetCartAsync(request.CartId);
+        if (cart == null || !cart.Items.Any())
+        {
+            return new VerifyPaymentResult(false, Error: "Cart is empty or not found.");
+        }
+
+        var pricing = await CalculateCartPricingAsync(cart, request.ShippingDetails.CouponCode);
+        if (pricing.Error != null)
+        {
+            return new VerifyPaymentResult(false, Error: pricing.Error);
+        }
+
+        var amountInPaise = (int)Math.Round(pricing.TotalAmount * 100);
+        var razorpayOrderValid = await ValidateRazorpayOrderAsync(request.RazorpayOrderId, amountInPaise);
+        if (!razorpayOrderValid)
+        {
+            return new VerifyPaymentResult(false, Error: "Payment amount verification failed.");
+        }
+
+        var order = BuildPaidOrder(userId, request, cart, pricing);
+
+        try
+        {
+            _context.Orders.Add(order);
+
+            foreach (var item in cart.Items)
             {
-                order.Status = "Processing";
-                order.RazorpayPaymentId = paymentId;
-                await _context.SaveChangesAsync();
+                if (item.Product != null)
+                {
+                    item.Product.Stock -= item.Quantity;
+                }
+            }
 
-                await SendAdminPaymentVerifiedWhatsAppAsync(order);
+            _context.Carts.Remove(cart);
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogWarning(ex, "Could not save order for Razorpay payment {PaymentId}", request.RazorpayPaymentId);
+            _context.ChangeTracker.Clear();
 
-                return true;
+            var duplicateOrder = await _context.Orders
+                .Include(o => o.Items)
+                .ThenInclude(i => i.Product)
+                .FirstOrDefaultAsync(o => o.RazorpayPaymentId == request.RazorpayPaymentId);
+
+            if (duplicateOrder != null && duplicateOrder.UserId == userId)
+            {
+                return new VerifyPaymentResult(true, duplicateOrder);
+            }
+
+            return new VerifyPaymentResult(false, Error: "Could not create order for this payment.");
+        }
+
+        await SendOrderWhatsAppNotificationsAsync(order, pricing.TotalAmount);
+        await SendAdminPaymentVerifiedWhatsAppAsync(order);
+
+        return new VerifyPaymentResult(true, order);
+    }
+
+    private async Task<Cart?> GetCartAsync(string cartId)
+    {
+        if (string.IsNullOrWhiteSpace(cartId))
+        {
+            return null;
+        }
+
+        return await _context.Carts
+            .Include(c => c.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(c => c.Id == cartId);
+    }
+
+    private async Task<CartPricing> CalculateCartPricingAsync(Cart cart, string? rawCouponCode)
+    {
+        foreach (var item in cart.Items)
+        {
+            if (item.Product == null)
+            {
+                return new CartPricing(Error: "A product in your cart is no longer available.");
+            }
+
+            if (item.Quantity > item.Product.Stock)
+            {
+                return new CartPricing(Error: $"Only {item.Product.Stock} item(s) available for {item.Product.Name}.");
             }
         }
-        return false;
+
+        var subtotal = cart.Items.Sum(i => i.Quantity * (i.Product?.Price ?? 0));
+        var couponCode = rawCouponCode?.Trim().ToUpper();
+        var discountAmount = 0m;
+
+        if (!string.IsNullOrWhiteSpace(couponCode))
+        {
+            var coupon = await _context.Coupons.FirstOrDefaultAsync(c => c.Code == couponCode && c.IsActive);
+            if (coupon == null)
+            {
+                return new CartPricing(Error: "Coupon code is invalid.");
+            }
+
+            discountAmount = Math.Round(subtotal * (coupon.DiscountPercent / 100m), 2);
+        }
+
+        var shippingSettings = await _context.ShippingSettings
+            .OrderByDescending(s => s.Id)
+            .FirstOrDefaultAsync();
+
+        if (shippingSettings == null || !shippingSettings.Enabled)
+        {
+            shippingSettings = new ShippingSettings();
+        }
+
+        decimal shippingFee;
+        if (shippingSettings.FreeShippingType == "amount")
+        {
+            shippingFee = subtotal - discountAmount >= shippingSettings.FreeShippingAmount ? 0m : shippingSettings.StandardShippingFee;
+        }
+        else
+        {
+            var totalItems = cart.Items.Sum(i => i.Quantity);
+            shippingFee = totalItems >= shippingSettings.FreeShippingThreshold ? 0m : shippingSettings.StandardShippingFee;
+        }
+
+        var totalAmount = subtotal - discountAmount + shippingFee;
+        return new CartPricing(subtotal, discountAmount, shippingFee, totalAmount, couponCode);
+    }
+
+    private static string? ValidateShippingDetails(ShippingDetails shippingDetails)
+    {
+        if (string.IsNullOrWhiteSpace(shippingDetails.FullName) ||
+            string.IsNullOrWhiteSpace(shippingDetails.PhoneNumber) ||
+            string.IsNullOrWhiteSpace(shippingDetails.AddressLine1) ||
+            string.IsNullOrWhiteSpace(shippingDetails.City) ||
+            string.IsNullOrWhiteSpace(shippingDetails.State) ||
+            string.IsNullOrWhiteSpace(shippingDetails.Pincode))
+        {
+            return "Please fill all required shipping fields.";
+        }
+
+        var primaryPhone = shippingDetails.PhoneNumber.Trim();
+        return primaryPhone.Length < 10 || primaryPhone.Length > 15
+            ? "Primary phone number is invalid."
+            : null;
+    }
+
+    private Order BuildPaidOrder(string userId, VerifyPaymentRequest request, Cart cart, CartPricing pricing)
+    {
+        var shippingDetails = request.ShippingDetails;
+        var fullAddress = string.Join(", ", new[]
+        {
+            shippingDetails.AddressLine1?.Trim(),
+            shippingDetails.AddressLine2?.Trim(),
+            shippingDetails.City?.Trim(),
+            shippingDetails.State?.Trim(),
+            shippingDetails.Pincode?.Trim()
+        }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+        return new Order
+        {
+            UserId = userId,
+            OrderDate = DateTime.UtcNow,
+            Subtotal = pricing.Subtotal,
+            DiscountAmount = pricing.DiscountAmount,
+            ShippingFee = pricing.ShippingFee,
+            CouponCode = pricing.CouponCode,
+            TotalAmount = pricing.TotalAmount,
+            Status = "Pending",
+            PaymentStatus = "Paid",
+            FullName = (shippingDetails.FullName ?? string.Empty).Trim(),
+            PhoneNumber = (shippingDetails.PhoneNumber ?? string.Empty).Trim(),
+            AlternatePhoneNumber = shippingDetails.AlternatePhoneNumber?.Trim() ?? string.Empty,
+            AddressLine1 = (shippingDetails.AddressLine1 ?? string.Empty).Trim(),
+            AddressLine2 = shippingDetails.AddressLine2?.Trim() ?? string.Empty,
+            City = (shippingDetails.City ?? string.Empty).Trim(),
+            State = (shippingDetails.State ?? string.Empty).Trim(),
+            DeliveryAddress = string.IsNullOrWhiteSpace(shippingDetails.DeliveryAddress)
+                ? fullAddress
+                : shippingDetails.DeliveryAddress.Trim(),
+            Landmark = shippingDetails.Landmark?.Trim() ?? string.Empty,
+            Pincode = (shippingDetails.Pincode ?? string.Empty).Trim(),
+            RazorpayOrderId = request.RazorpayOrderId,
+            RazorpayPaymentId = request.RazorpayPaymentId,
+            Items = cart.Items.Select(i => new OrderItem
+            {
+                ProductId = i.ProductId,
+                Quantity = i.Quantity,
+                Price = i.Product?.Price ?? 0,
+                SelectedChoicesJson = i.SelectedChoicesJson
+            }).ToList()
+        };
+    }
+
+    private bool IsValidRazorpaySignature(string razorpayOrderId, string paymentId, string signature)
+    {
+        var credentials = GetRazorpayCredentials();
+        if (credentials == null)
+        {
+            return false;
+        }
+
+        var payload = $"{razorpayOrderId}|{paymentId}";
+        var secretBytes = Encoding.UTF8.GetBytes(credentials.Value.KeySecret);
+        var payloadBytes = Encoding.UTF8.GetBytes(payload);
+
+        using var hmac = new HMACSHA256(secretBytes);
+        var hash = hmac.ComputeHash(payloadBytes);
+        var expectedSignature = Convert.ToHexString(hash).ToLowerInvariant();
+
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(expectedSignature),
+            Encoding.UTF8.GetBytes(signature.ToLowerInvariant()));
+    }
+
+    private async Task<bool> ValidateRazorpayOrderAsync(string razorpayOrderId, int amountInPaise)
+    {
+        var credentials = GetRazorpayCredentials();
+        if (credentials == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{credentials.Value.KeyId}:{credentials.Value.KeySecret}"));
+            var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.razorpay.com/v1/orders/{razorpayOrderId}")
+            {
+                Headers = { Authorization = new AuthenticationHeaderValue("Basic", authHeader) }
+            };
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+            var razorpayData = JsonSerializer.Deserialize<JsonElement>(responseBody);
+            var razorpayAmount = razorpayData.GetProperty("amount").GetInt32();
+            var currency = razorpayData.GetProperty("currency").GetString();
+
+            return razorpayAmount == amountInPaise && currency == "INR";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not validate Razorpay order {RazorpayOrderId}", razorpayOrderId);
+            return false;
+        }
+    }
+
+    private (string KeyId, string KeySecret)? GetRazorpayCredentials()
+    {
+        var keyId = (_configuration["RAZORPAY_KEY_ID"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_ID"))?.Trim();
+        var keySecret = (_configuration["RAZORPAY_KEY_SECRET"] ?? Environment.GetEnvironmentVariable("RAZORPAY_KEY_SECRET"))?.Trim();
+
+        return string.IsNullOrEmpty(keyId) || string.IsNullOrEmpty(keySecret)
+            ? null
+            : (keyId, keySecret);
+    }
+
+    private async Task SendOrderWhatsAppNotificationsAsync(Order order, decimal totalAmount)
+    {
+        try
+        {
+            var adminPhone = (_configuration["ADMIN_WHATSAPP_PHONE"]
+                ?? Environment.GetEnvironmentVariable("ADMIN_WHATSAPP_PHONE")
+                ?? Environment.GetEnvironmentVariable("WHATSAPP_ADMIN_PHONE"))?.Trim();
+
+            var itemSummary = string.Join(", ", order.Items.Select(item => $"{item.ProductId} x {item.Quantity}"));
+            var adminMessage =
+                $"New paid order received on Papercues.\n" +
+                $"Order ID: #{order.Id}\n" +
+                $"Customer: {order.FullName}\n" +
+                $"Phone: {order.PhoneNumber}\n" +
+                $"Amount: INR {totalAmount:F2}\n" +
+                $"Items: {itemSummary}\n" +
+                $"Address: {order.DeliveryAddress}";
+
+            if (!string.IsNullOrWhiteSpace(adminPhone))
+            {
+                var adminResult = await _whatsAppService.SendMessageAsync(adminPhone, adminMessage);
+                if (!adminResult.Success)
+                {
+                    _logger.LogError("Admin WhatsApp notification failed for order {OrderId}: {Error}", order.Id, adminResult.ErrorMessage);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Admin WhatsApp notification skipped for order {OrderId}: ADMIN_WHATSAPP_PHONE is not configured.", order.Id);
+            }
+
+            if (!string.IsNullOrWhiteSpace(order.PhoneNumber))
+            {
+                var customerMessage =
+                    $"Hi {order.FullName}, your Papercues order #{order.Id} has been placed successfully.\n" +
+                    $"Amount: INR {totalAmount:F2}\n" +
+                    $"We will notify you when your order is processed.";
+
+                var customerResult = await _whatsAppService.SendMessageAsync(order.PhoneNumber, customerMessage);
+                if (!customerResult.Success)
+                {
+                    _logger.LogError("Customer WhatsApp notification failed for order {OrderId}: {Error}", order.Id, customerResult.ErrorMessage);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WhatsApp notification flow failed for order {OrderId}. Order creation was not affected.", order.Id);
+        }
     }
 
     private async Task SendAdminPaymentVerifiedWhatsAppAsync(Order order)
@@ -358,14 +508,10 @@ public class OrderService : IOrderService
             $"Payment verified for Papercues order.\n" +
             $"Order ID: #{order.Id}\n" +
             $"Customer: {order.FullName}\n" +
-            $"Total Amount: ₹{order.TotalAmount:F2}";
+            $"Total Amount: INR {order.TotalAmount:F2}";
 
         try
         {
-            _logger.LogInformation("Attempting WhatsApp send");
-            _logger.LogInformation("WhatsApp recipient: {Recipient}", adminPhone);
-            _logger.LogInformation("WhatsApp message content: {Message}", message);
-
             var result = await _whatsAppService.SendMessageAsync(adminPhone, message);
 
             if (result.Success)
@@ -381,4 +527,12 @@ public class OrderService : IOrderService
             _logger.LogError(ex, "Twilio exception details while sending payment notification for order {OrderId}: {Message}", order.Id, ex.Message);
         }
     }
+
+    private record CartPricing(
+        decimal Subtotal = 0,
+        decimal DiscountAmount = 0,
+        decimal ShippingFee = 0,
+        decimal TotalAmount = 0,
+        string? CouponCode = null,
+        string? Error = null);
 }

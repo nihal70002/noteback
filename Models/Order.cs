@@ -12,6 +12,7 @@ public class Order
     public decimal ShippingFee { get; set; }
     public string? CouponCode { get; set; }
     public string Status { get; set; } = "Pending"; // Pending, Processing, Shipped, Delivered
+    public string PaymentStatus { get; set; } = "Pending"; // Pending, Paid
     
     // Shipping Details
     public string FullName { get; set; } = string.Empty;
@@ -59,4 +60,13 @@ public class ShippingDetails
     public string Landmark { get; set; } = string.Empty;
     public string Pincode { get; set; } = string.Empty;
     public string? CouponCode { get; set; }
+}
+
+public class VerifyPaymentRequest
+{
+    public string CartId { get; set; } = string.Empty;
+    public string RazorpayPaymentId { get; set; } = string.Empty;
+    public string RazorpayOrderId { get; set; } = string.Empty;
+    public string RazorpaySignature { get; set; } = string.Empty;
+    public ShippingDetails ShippingDetails { get; set; } = new();
 }

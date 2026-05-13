@@ -21,9 +21,10 @@ public class AdminController : ControllerBase
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()
     {
-        var totalRevenue = await _context.Orders.SumAsync(o => o.TotalAmount);
-        var totalOrders = await _context.Orders.CountAsync();
-        var pendingOrders = await _context.Orders.CountAsync(o => o.Status == "Pending");
+        var paidOrders = _context.Orders.Where(o => o.PaymentStatus == "Paid");
+        var totalRevenue = await paidOrders.SumAsync(o => o.TotalAmount);
+        var totalOrders = await paidOrders.CountAsync();
+        var pendingOrders = await paidOrders.CountAsync(o => o.Status == "Pending");
         var totalExpenses = await _context.BusinessExpenses.SumAsync(e => (decimal?)e.Amount) ?? 0m;
         var netProfit = totalRevenue - totalExpenses;
         var totalUsers = await _context.Users.CountAsync(u => u.Role != "Admin");
@@ -31,7 +32,7 @@ public class AdminController : ControllerBase
         var blockedUsers = await _context.Users.CountAsync(u => u.IsBlocked);
         
         var today = DateTime.UtcNow.Date;
-        var recentOrders = await _context.Orders
+        var recentOrders = await paidOrders
             .Where(o => o.OrderDate >= today.AddDays(-7))
             .ToListAsync();
 
@@ -77,7 +78,9 @@ public class AdminController : ControllerBase
             .ToListAsync();
 
         var totalExpenses = expenses.Sum(e => e.Amount);
-        var totalRevenue = await _context.Orders.SumAsync(o => o.TotalAmount);
+        var totalRevenue = await _context.Orders
+            .Where(o => o.PaymentStatus == "Paid")
+            .SumAsync(o => o.TotalAmount);
 
         return Ok(new
         {
@@ -208,7 +211,7 @@ public class AdminController : ControllerBase
 
         var users = await query
             .GroupJoin(
-                _context.Orders,
+                _context.Orders.Where(o => o.PaymentStatus == "Paid"),
                 user => user.Id,
                 order => order.UserId,
                 (user, orders) => new
@@ -317,7 +320,7 @@ public class AdminController : ControllerBase
         if (!userExists) return NotFound(new { Message = "User not found." });
 
         var orders = await _context.Orders
-            .Where(o => o.UserId == id)
+            .Where(o => o.UserId == id && o.PaymentStatus == "Paid")
             .Include(o => o.Items)
             .ThenInclude(i => i.Product)
             .OrderByDescending(o => o.OrderDate)

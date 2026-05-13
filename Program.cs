@@ -152,6 +152,15 @@ using (var scope = app.Services.CreateScope())
         ALTER TABLE "Orders"
         ADD COLUMN IF NOT EXISTS "RazorpayPaymentId" text;
     """);
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Orders"
+        ADD COLUMN IF NOT EXISTS "PaymentStatus" text NOT NULL DEFAULT 'Pending';
+    """);
+    db.Database.ExecuteSqlRaw("""
+        CREATE UNIQUE INDEX IF NOT EXISTS "IX_Orders_RazorpayPaymentId"
+        ON "Orders" ("RazorpayPaymentId")
+        WHERE "RazorpayPaymentId" IS NOT NULL;
+    """);
 }
 
 // Configure the HTTP request pipeline.
