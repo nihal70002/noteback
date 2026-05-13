@@ -303,15 +303,21 @@ public class OrderService : IOrderService
             shippingSettings = new ShippingSettings();
         }
 
+        var payableSubtotal = subtotal - discountAmount;
+        var qualifiesForAmountFreeShipping = payableSubtotal >= 450m;
         decimal shippingFee;
         if (shippingSettings.FreeShippingType == "amount")
         {
-            shippingFee = subtotal - discountAmount >= shippingSettings.FreeShippingAmount ? 0m : shippingSettings.StandardShippingFee;
+            shippingFee = qualifiesForAmountFreeShipping || payableSubtotal >= shippingSettings.FreeShippingAmount
+                ? 0m
+                : shippingSettings.StandardShippingFee;
         }
         else
         {
             var totalItems = cart.Items.Sum(i => i.Quantity);
-            shippingFee = totalItems >= shippingSettings.FreeShippingThreshold ? 0m : shippingSettings.StandardShippingFee;
+            shippingFee = qualifiesForAmountFreeShipping || totalItems >= shippingSettings.FreeShippingThreshold
+                ? 0m
+                : shippingSettings.StandardShippingFee;
         }
 
         var totalAmount = subtotal - discountAmount + shippingFee;
