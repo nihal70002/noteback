@@ -40,6 +40,20 @@ public class NoteDbContext : DbContext
 
         modelBuilder.Entity<Coupon>().HasKey(c => c.Code);
 
+        modelBuilder.Entity<Cart>()
+            .HasIndex(c => c.UserId);
+
+        modelBuilder.Entity<Cart>()
+            .HasIndex(c => c.AddedAt);
+
+        modelBuilder.Entity<Cart>()
+            .Property(c => c.AddedAt)
+            .HasDefaultValueSql("NOW()");
+
+        modelBuilder.Entity<Cart>()
+            .Property(c => c.Status)
+            .HasDefaultValue("Active");
+
         modelBuilder.Entity<WishlistItem>()
             .HasIndex(w => new { w.UserId, w.ProductId })
             .IsUnique();

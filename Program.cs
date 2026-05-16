@@ -64,6 +64,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IAdminCartAnalyticsService, AdminCartAnalyticsService>();
 builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 builder.Services.AddScoped<IWhatsAppService, WhatsAppService>();
 
@@ -155,6 +156,39 @@ using (var scope = app.Services.CreateScope())
     db.Database.ExecuteSqlRaw("""
         ALTER TABLE "Orders"
         ADD COLUMN IF NOT EXISTS "PaymentStatus" text NOT NULL DEFAULT 'Pending';
+    """);
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Carts"
+        ADD COLUMN IF NOT EXISTS "UserId" text;
+    """);
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Carts"
+        ADD COLUMN IF NOT EXISTS "AddedAt" timestamp with time zone NOT NULL DEFAULT NOW();
+    """);
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Carts"
+        ADD COLUMN IF NOT EXISTS "Status" text NOT NULL DEFAULT 'Active';
+    """);
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Carts"
+        ADD COLUMN IF NOT EXISTS "IsOrdered" boolean NOT NULL DEFAULT FALSE;
+    """);
+    db.Database.ExecuteSqlRaw("""
+        ALTER TABLE "Carts"
+        ADD COLUMN IF NOT EXISTS "OrderedAt" timestamp with time zone;
+    """);
+    db.Database.ExecuteSqlRaw("""
+        UPDATE "Carts"
+        SET "UserId" = substring("Id" from 6)
+        WHERE "UserId" IS NULL AND "Id" LIKE 'cart_%';
+    """);
+    db.Database.ExecuteSqlRaw("""
+        CREATE INDEX IF NOT EXISTS "IX_Carts_UserId"
+        ON "Carts" ("UserId");
+    """);
+    db.Database.ExecuteSqlRaw("""
+        CREATE INDEX IF NOT EXISTS "IX_Carts_AddedAt"
+        ON "Carts" ("AddedAt");
     """);
     db.Database.ExecuteSqlRaw("""
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_Orders_RazorpayPaymentId"

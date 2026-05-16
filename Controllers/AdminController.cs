@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Note.Backend.Data;
 using Note.Backend.Models;
+using Note.Backend.Services;
 
 namespace Note.Backend.Controllers;
 
@@ -12,10 +13,42 @@ namespace Note.Backend.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly NoteDbContext _context;
+    private readonly IAdminCartAnalyticsService _cartAnalyticsService;
 
-    public AdminController(NoteDbContext context)
+    public AdminController(NoteDbContext context, IAdminCartAnalyticsService cartAnalyticsService)
     {
         _context = context;
+        _cartAnalyticsService = cartAnalyticsService;
+    }
+
+    [HttpGet("cart-analytics")]
+    public async Task<IActionResult> GetCartAnalytics([FromQuery] CartAnalyticsQuery query)
+    {
+        var response = await _cartAnalyticsService.GetCartAnalyticsAsync(query);
+        return Ok(response);
+    }
+
+    [HttpGet("abandoned-carts")]
+    public async Task<IActionResult> GetAbandonedCarts([FromQuery] CartAnalyticsQuery query)
+    {
+        var response = await _cartAnalyticsService.GetAbandonedCartsAsync(query);
+        return Ok(response);
+    }
+
+    [HttpGet("top-cart-products")]
+    public async Task<IActionResult> GetTopCartProducts([FromQuery] int take = 10)
+    {
+        var response = await _cartAnalyticsService.GetTopCartProductsAsync(take);
+        return Ok(response);
+    }
+
+    [HttpGet("user-cart/{userId}")]
+    public async Task<IActionResult> GetUserCart(string userId)
+    {
+        var response = await _cartAnalyticsService.GetUserCartAsync(userId);
+        return response == null
+            ? NotFound(new { Message = "User not found." })
+            : Ok(response);
     }
 
     [HttpGet("stats")]

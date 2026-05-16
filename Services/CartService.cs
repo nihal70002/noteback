@@ -7,6 +7,7 @@ namespace Note.Backend.Services;
 public class CartService : ICartService
 {
     private readonly NoteDbContext _context;
+    private const string ActiveStatus = "Active";
 
     public CartService(NoteDbContext context)
     {
@@ -22,7 +23,7 @@ public class CartService : ICartService
 
         if (cart == null)
         {
-            cart = new Cart { Id = cartId };
+            cart = CreateCart(cartId);
             _context.Carts.Add(cart);
             await _context.SaveChangesAsync();
         }
@@ -72,8 +73,12 @@ public class CartService : ICartService
 
         if (cart == null)
         {
-            cart = new Cart { Id = cartId };
+            cart = CreateCart(cartId);
             _context.Carts.Add(cart);
+        }
+        else
+        {
+            TouchCart(cart, cartId);
         }
 
         var existingItem = cart.Items.FirstOrDefault(i => i.ProductId == productId);
@@ -118,6 +123,12 @@ public class CartService : ICartService
         }
 
         item.Quantity = quantity;
+        var cart = await _context.Carts.FirstOrDefaultAsync(c => c.Id == cartId);
+        if (cart != null)
+        {
+            TouchCart(cart, cartId);
+        }
+
         await _context.SaveChangesAsync();
 
         return (await GetCartAsync(cartId), null);
@@ -129,6 +140,12 @@ public class CartService : ICartService
         if (item != null)
         {
             _context.CartItems.Remove(item);
+            var cart = await _context.Carts.FirstOrDefaultAsync(c => c.Id == cartId);
+            if (cart != null)
+            {
+                TouchCart(cart, cartId);
+            }
+
             await _context.SaveChangesAsync();
         }
 
@@ -169,8 +186,12 @@ public class CartService : ICartService
 
         if (cart == null)
         {
-            cart = new Cart { Id = cartId };
+            cart = CreateCart(cartId);
             _context.Carts.Add(cart);
+        }
+        else
+        {
+            TouchCart(cart, cartId);
         }
 
         _context.CartItems.RemoveRange(cart.Items);
@@ -187,5 +208,34 @@ public class CartService : ICartService
         await _context.SaveChangesAsync();
 
         return (await GetCartAsync(cartId), null);
+    }
+
+    private static Cart CreateCart(string cartId)
+    {
+        return new Cart
+        {
+            Id = cartId,
+            UserId = GetUserIdFromCartId(cartId),
+            AddedAt = DateTime.UtcNow,
+            Status = ActiveStatus,
+            IsOrdered = false
+        };
+    }
+
+    private static void TouchCart(Cart cart, string cartId)
+    {
+        cart.UserId ??= GetUserIdFromCartId(cartId);
+        cart.AddedAt = DateTime.UtcNow;
+        cart.Status = ActiveStatus;
+        cart.IsOrdered = false;
+        cart.OrderedAt = null;
+    }
+
+    private static string? GetUserIdFromCartId(string cartId)
+    {
+        const string prefix = "cart_";
+        return cartId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? cartId[prefix.Length..]
+            : null;
     }
 }
